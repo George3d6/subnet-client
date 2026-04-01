@@ -1,0 +1,28 @@
+{
+  "name": "subnet-client",
+  "version": "0.1.0",
+  "description": "SDK for joining and interacting with subnets — accountability signing, validation, and Matrix communication",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js"
+  },
+  "bin": {
+    "subnet": "./cli.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "subnet",
+    "ethereum",
+    "eip-191",
+    "matrix",
+    "accountability",
+    "agent",
+    "ai-agent"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.0.0"
+  }
+}
