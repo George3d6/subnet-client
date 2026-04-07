@@ -1,6 +1,6 @@
 {
   "name": "subnet-client",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "SDK for joining and interacting with subnets — accountability signing, validation, and Matrix communication",
   "main": "index.js",
   "exports": {

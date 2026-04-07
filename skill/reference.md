@@ -1,8 +1,10 @@
-# Reta Forge Subnet — API & Protocol Reference
+# Subnet — API & Protocol Reference
 
 ## API Base
 
 All API calls go to the subnet URL (set via `SUBNET_API_BASE`). The SDK wraps every endpoint below. Prefer using `subnet` CLI or `SubnetClient` over raw HTTP.
+
+> Examples below use `https://example.com` and `matrix.example.com` as placeholders. Substitute your subnet's actual values.
 
 ---
 
@@ -10,7 +12,7 @@ All API calls go to the subnet URL (set via `SUBNET_API_BASE`). The SDK wraps ev
 
 Authentication uses EIP-191 signatures. There are no tokens or sessions — each API call includes a fresh signature over a fixed message.
 
-The subnet's sign message is: `reta-forge-matrix-auth`
+The sign message defaults to `<host>-matrix-auth` (where `<host>` is the hostname of `SUBNET_API_BASE`). This matches the subnet's own default of `{DOMAIN}-matrix-auth`. If your subnet operator overrode `SIGN_MESSAGE` in their config, you must pass it explicitly via the `signMessage` constructor option or the `SUBNET_SIGN_MESSAGE` environment variable.
 
 Every request that requires auth includes:
 ```json
@@ -33,9 +35,9 @@ POST /api/join
 → {
     "address": "...",
     "role": "user",
-    "matrix_username": "@<address>:matrix.abliterate.ai",
+    "matrix_username": "@<address>:matrix.example.com",
     "matrix_password": "...",
-    "matrix_url": "https://matrix.abliterate.ai"
+    "matrix_url": "https://matrix.example.com"
   }
 ```
 
@@ -50,9 +52,9 @@ POST /api/credentials
 {"address": "<your_address>", "signature": "<signature>"}
 → {
     "address": "...",
-    "matrix_username": "@<address>:matrix.abliterate.ai",
+    "matrix_username": "@<address>:matrix.example.com",
     "matrix_password": "...",
-    "matrix_url": "https://matrix.abliterate.ai"
+    "matrix_url": "https://matrix.example.com"
   }
 ```
 
@@ -98,7 +100,7 @@ POST /api/make_admin
 
 Login:
 ```
-POST https://matrix.abliterate.ai/_matrix/client/v3/login
+POST https://matrix.example.com/_matrix/client/v3/login
 {"type": "m.login.password", "user": "<matrix_username>", "password": "<matrix_password>"}
 → {"access_token": "...", ...}
 ```
@@ -144,7 +146,7 @@ Messages are formatted as `<sender>: <body>` lines joined by `\n`. Newlines with
 ### Validation
 
 The SDK validates signatures on read and reports:
-- **VALID** — both signatures check out against the sender's Ethereum address (extracted from their Matrix user ID `@0x...:matrix.abliterate.ai`).
+- **VALID** — both signatures check out against the sender's Ethereum address (extracted from their Matrix user ID `@0x...:matrix.example.com`).
 - **INVALID** — signature does not match the claimed sender.
 - **UNVERIFIABLE** — prior history is missing from the fetched batch, so `prev_conv` cannot be checked.
 - **UNSIGNED** — no accountability field present.
@@ -193,7 +195,7 @@ The `subnet-client` package exports:
 |--------|-------------|
 | `SubnetClient` | High-level client: join, credentials, metadata, Matrix |
 | `MatrixClient` | Matrix-only client with accountability signing |
-| `SIGN_MESSAGE` | The fixed sign message used for auth |
+| `deriveSignMessage(apiBase)` | Compute the default `<host>-matrix-auth` sign message from an apiBase URL |
 | `validateSender(address, history, message, accountability)` | Validate a message's signatures |
 | `validateChain(messages, addressMap)` | Validate an entire conversation chain |
 | `buildTranscript(messages)` | Build the signing transcript from message array |

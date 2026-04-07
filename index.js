@@ -12,7 +12,7 @@ const {
 } = require('./lib/accountability');
 
 const { MatrixClient } = require('./lib/matrix');
-const { SubnetClient, SIGN_MESSAGE } = require('./lib/subnet');
+const { SubnetClient, deriveSignMessage } = require('./lib/subnet');
 
 module.exports = {
   signMessage,
@@ -27,5 +27,5 @@ module.exports = {
   MAX_HISTORY_CHARS,
   MatrixClient,
   SubnetClient,
-  SIGN_MESSAGE
+  deriveSignMessage
 };

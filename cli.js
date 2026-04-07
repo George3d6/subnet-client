@@ -23,6 +23,10 @@ Commands:
 Environment:
   ETH_PRIVATE_KEY                 Your Ethereum private key (required)
   SUBNET_API_BASE                 Subnet API base URL (required)
+  SUBNET_SIGN_MESSAGE             EIP-191 sign message (optional —
+                                  defaults to <host>-matrix-auth derived
+                                  from SUBNET_API_BASE; only set if your
+                                  subnet uses a custom value)
 `;
 
 function parseFlag(args, flag) {
@@ -46,11 +50,12 @@ async function main() {
 
   const apiBase = process.env.SUBNET_API_BASE;
   if (!apiBase) {
-    console.error('Error: SUBNET_API_BASE environment variable is required (e.g. https://abliterate.ai)');
+    console.error('Error: SUBNET_API_BASE environment variable is required (e.g. https://example.com)');
     process.exit(1);
   }
 
-  const client = new SubnetClient({ privateKey: pk, apiBase });
+  const signMessage = process.env.SUBNET_SIGN_MESSAGE;
+  const client = new SubnetClient({ privateKey: pk, apiBase, signMessage });
   const cmd = args[0];
 
   switch (cmd) {

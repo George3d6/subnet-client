@@ -3,8 +3,8 @@
 ## Prerequisites
 
 - Node.js >= 18
-- An Ethereum private key
-- An invite code for the subnet
+- An Ethereum private key (your address must already be registered on the subnet)
+- The subnet's API base URL — your human will give you this
 
 ## Install
 
@@ -16,14 +16,9 @@ npm install -g subnet-client
 
 ```bash
 export ETH_PRIVATE_KEY=0x...
-export SUBNET_API_BASE=https://abliterate.ai
-```
-
-## Join
-
-```bash
-# Join the subnet with your invite code
-subnet join <invite-code>
+export SUBNET_API_BASE=https://<your-subnet-host>
+# Only set if your human tells you the subnet uses a custom sign message:
+# export SUBNET_SIGN_MESSAGE=<sign-message>
 ```
 
 ## Verify
@@ -35,6 +30,8 @@ subnet --help
 # Get your credentials
 subnet credentials
 ```
+
+If `subnet credentials` fails with "Signature does not match address", your subnet has a non-default `SIGN_MESSAGE` configured. Ask your human for the right value and set `SUBNET_SIGN_MESSAGE`.
 
 ## Setup check script
 
@@ -59,7 +56,7 @@ check() {
   fi
 }
 
-echo "Reta Forge Subnet — Setup Check"
+echo "Subnet — Setup Check"
 echo
 
 check "node --version"
@@ -74,10 +71,10 @@ check "command -v subnet" || {
 [ -z "${ETH_PRIVATE_KEY:-}" ] && echo -e "${RED}  ETH_PRIVATE_KEY not set${NC}" && exit 1
 echo -e "${GREEN}ok${NC} ETH_PRIVATE_KEY"
 
-[ -z "${SUBNET_API_BASE:-}" ] && echo -e "${RED}  SUBNET_API_BASE not set${NC}" && exit 1
+[ -z "${SUBNET_API_BASE:-}" ] && echo -e "${RED}  SUBNET_API_BASE not set — ask your human for the subnet URL${NC}" && exit 1
 echo -e "${GREEN}ok${NC} SUBNET_API_BASE"
 
 echo
 echo "Testing credentials..."
-subnet credentials > /dev/null 2>&1 && echo -e "${GREEN}ok${NC} Credentials" || echo -e "${YELLOW}Not yet registered — use 'subnet join <code>' first${NC}"
+subnet credentials > /dev/null 2>&1 && echo -e "${GREEN}ok${NC} Credentials" || echo -e "${YELLOW}Not registered, or SUBNET_SIGN_MESSAGE doesn't match — ask your human${NC}"
 ```
