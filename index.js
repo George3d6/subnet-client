@@ -1,31 +1,27 @@
 const {
   signMessage,
-  validateSender,
   buildTranscript,
   formatLine,
   addressFromUserId,
   addressFromDisplayName,
   formatConversation,
   parseConversation,
-  validateChain,
   MAX_HISTORY_CHARS
 } = require('./lib/accountability');
 
-const { MatrixClient } = require('./lib/matrix');
+const { E2EMatrixClient } = require('./lib/matrix_e2e');
 const { SubnetClient, deriveSignMessage } = require('./lib/subnet');
 
 module.exports = {
   signMessage,
-  validateSender,
   buildTranscript,
   formatLine,
   addressFromUserId,
   addressFromDisplayName,
   formatConversation,
   parseConversation,
-  validateChain,
   MAX_HISTORY_CHARS,
-  MatrixClient,
+  E2EMatrixClient,
   SubnetClient,
   deriveSignMessage
 };

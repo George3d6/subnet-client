@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 const fs = require('fs');
 const { SubnetClient } = require('./lib/subnet');
-const { parseConversation, validateChain, signMessage, formatConversation } = require('./lib/accountability');
+const { parseConversation, signMessage, formatConversation } = require('./lib/accountability');
 
 const USAGE = `Usage: subnet <command> [args]
 
@@ -13,16 +13,20 @@ Commands:
   make-admin <address>            Promote a user to admin (admin only)
   rooms                           List public Matrix rooms
   joined-rooms                    List rooms you have joined
+  invites                         List pending room invites
+  accept-invite <roomId>          Accept a pending room invite
+  reject-invite <roomId>          Decline a pending room invite
   join-room <roomId>              Join a Matrix room
+  create-room [--name N] [--topic T] [--public] [--unencrypted] [--invite addr,...]
+                                  Create a new Matrix room (E2E by default)
+  leave-room <roomId>             Leave (and forget) a room
   read <roomId> [--limit N] [--since-mins-ago N]
-                                  Read messages from a room
+                                  Read messages from a room (returns all by default)
   read-all [--limit N] [--since-mins-ago N]
                                   Read messages from every joined room
   send <roomId> <message>         Send a signed message to a room
   sync [--since TOKEN] [--timeout MS]
                                   Long-poll for new Matrix events
-  validate-chain <file|->         Validate a conversation in protocol text format
-                                  Use - to read from stdin
   sign-text <sender> <message>    Sign a message against prior conversation on stdin
   format-chain <file|->           Parse protocol text and output as JSON
 
@@ -54,9 +58,7 @@ function parseReadOpts(args) {
 }
 
 function formatMessageLine(msg) {
-  const status = msg.accountability.signed
-    ? (msg.accountability.valid === true ? 'VALID' : msg.accountability.valid === null ? 'UNVERIFIABLE' : 'INVALID')
-    : 'UNSIGNED';
+  const status = msg.accountability?.signed ? 'SIGNED' : 'UNSIGNED';
   return `[${status}] ${msg.sender}: ${msg.body}`;
 }
 
@@ -79,8 +81,8 @@ async function main() {
     process.exit(1);
   }
 
-  const signMessage = process.env.SUBNET_SIGN_MESSAGE;
-  const client = new SubnetClient({ privateKey: pk, apiBase, signMessage });
+  const signMsgEnv = process.env.SUBNET_SIGN_MESSAGE;
+  const client = new SubnetClient({ privateKey: pk, apiBase, signMessage: signMsgEnv });
   const cmd = args[0];
 
   switch (cmd) {
@@ -140,6 +142,53 @@ async function main() {
       break;
     }
 
+    case 'invites': {
+      await client.loginMatrix();
+      const invites = await client.listInvites();
+      console.log(JSON.stringify(invites, null, 2));
+      break;
+    }
+
+    case 'accept-invite': {
+      if (!args[1]) { console.error('Usage: subnet accept-invite <roomId>'); process.exit(1); }
+      await client.loginMatrix();
+      const result = await client.acceptInvite(args[1]);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'reject-invite': {
+      if (!args[1]) { console.error('Usage: subnet reject-invite <roomId>'); process.exit(1); }
+      await client.loginMatrix();
+      const result = await client.rejectInvite(args[1]);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'create-room': {
+      await client.loginMatrix();
+      const opts = {};
+      const name = parseFlag(args, '--name');
+      if (name) opts.name = name;
+      const topic = parseFlag(args, '--topic');
+      if (topic) opts.topic = topic;
+      if (args.includes('--public')) opts.visibility = 'public';
+      if (args.includes('--unencrypted')) opts.encrypted = false;
+      const inviteList = parseFlag(args, '--invite');
+      if (inviteList) opts.invite = inviteList.split(',').map(s => s.trim()).filter(Boolean);
+      const result = await client.createRoom(opts);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'leave-room': {
+      if (!args[1]) { console.error('Usage: subnet leave-room <roomId>'); process.exit(1); }
+      await client.loginMatrix();
+      const result = await client.leaveRoom(args[1]);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
     case 'read': {
       if (!args[1]) { console.error('Usage: subnet read <roomId> [--limit N] [--since-mins-ago N]'); process.exit(1); }
       await client.loginMatrix();
@@ -194,33 +243,6 @@ async function main() {
       break;
     }
 
-    case 'validate-chain': {
-      const source = args[1];
-      if (!source) { console.error('Usage: subnet validate-chain <file|->'); process.exit(1); }
-      const text = source === '-'
-        ? fs.readFileSync('/dev/stdin', 'utf8')
-        : fs.readFileSync(source, 'utf8');
-      const messages = parseConversation(text);
-      const addressMap = {};
-      for (let i = 2; i < args.length; i++) {
-        if (args[i] === '--address' && args[i + 1]) {
-          const [label, addr] = args[++i].split('=');
-          if (label && addr) addressMap[label] = addr;
-        }
-      }
-      const results = validateChain(messages, addressMap);
-      for (const r of results) {
-        const status = r.valid ? 'VALID' : (r.error ? 'ERROR' : 'INVALID');
-        console.log(`[${status}] ${r.sender}: ${r.body.slice(0, 80)}`);
-        if (r.recovered_address) console.log(`  Signer: ${r.recovered_address}`);
-        if (r.error) console.log(`  ${r.error}`);
-        if (!r.valid && !r.error) {
-          console.log(`  with_reply: ${r.with_reply_valid ? 'ok' : 'FAIL'}  prev_conv: ${r.prev_conv_valid === null ? 'n/a' : r.prev_conv_valid ? 'ok' : 'FAIL'}`);
-        }
-      }
-      break;
-    }
-
     case 'sign-text': {
       const sender = args[1];
       const message = args.slice(2).join(' ');
@@ -237,7 +259,8 @@ async function main() {
         sender,
         body: message,
         prev_conv: signed.prev_conv_sign,
-        with_reply: signed.with_reply_sign
+        with_reply: signed.with_reply_sign,
+        reply_only: signed.reply_only_sign
       }]);
       console.log(formatted);
       break;
