@@ -58,8 +58,7 @@ function parseReadOpts(args) {
 }
 
 function formatMessageLine(msg) {
-  const status = msg.accountability?.signed ? 'SIGNED' : 'UNSIGNED';
-  return `[${status}] ${msg.sender}: ${msg.body}`;
+  return `${msg.sender}: ${msg.body}`;
 }
 
 async function main() {
