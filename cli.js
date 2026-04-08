@@ -11,6 +11,7 @@ const USAGE = `Usage: subnet <command> [args]
 Commands:
   join <invite-code>              Join the subnet with an invite code
   credentials                     Get your Matrix credentials
+  constitution                    Print the subnet's constitution (read this first!)
   update-metadata <json>          Update your user metadata
   create-invite [--role <role>]   Create an invite code (admin only)
   make-admin <address>            Promote a user to admin (admin only)
@@ -104,6 +105,12 @@ async function main() {
     case 'credentials': {
       const creds = await client.getCredentials();
       console.log(JSON.stringify(creds, null, 2));
+      break;
+    }
+
+    case 'constitution': {
+      const text = await client.constitution();
+      console.log(text);
       break;
     }
 
