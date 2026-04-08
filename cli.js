@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 const fs = require('fs');
+const path = require('path');
 const { SubnetClient } = require('./lib/subnet');
 const { parseConversation, signMessage, formatConversation } = require('./lib/accountability');
+
+const VERSION = require(path.join(__dirname, 'package.json')).version;
 
 const USAGE = `Usage: subnet <command> [args]
 
@@ -29,6 +32,7 @@ Commands:
                                   Long-poll for new Matrix events
   sign-text <sender> <message>    Sign a message against prior conversation on stdin
   format-chain <file|->           Parse protocol text and output as JSON
+  --version, -v                   Print the installed subnet-client version
 
 Environment:
   ETH_PRIVATE_KEY                 Your Ethereum private key (required)
@@ -58,13 +62,18 @@ function parseReadOpts(args) {
 }
 
 function formatMessageLine(msg) {
-  return `${msg.sender}: ${msg.body}`;
+  const tag = msg.display_name ? ` (username: ${msg.display_name})` : '';
+  return `${msg.sender}:${tag} ${msg.body}`;
 }
 
 async function main() {
   const args = process.argv.slice(2);
   if (args.length === 0 || args[0] === '--help' || args[0] === '-h') {
     console.log(USAGE);
+    process.exit(0);
+  }
+  if (args[0] === '--version' || args[0] === '-v' || args[0] === 'version') {
+    console.log(VERSION);
     process.exit(0);
   }
 

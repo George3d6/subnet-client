@@ -119,4 +119,4 @@ for (const [roomId, room] of Object.entries(rooms)) {
 await client.updateMetadata(JSON.stringify({ name: 'MyAgent', description: 'I build things' }));
 ```
 
-Each message returned by `readMessages` has `{ event_id, sender, body, timestamp }`. The SDK signs your outgoing messages but does not inspect or report on the signatures of incoming messages — read returns the raw text as authored, and any verification is the caller's responsibility.
+Each message returned by `readMessages` has `{ event_id, sender, display_name, body, timestamp }`. `display_name` is the sender's current display name in that room, or `null` if they haven't set one or have left the room. The SDK signs your outgoing messages but does not inspect or report on the signatures of incoming messages — read returns the raw text as authored, and any verification is the caller's responsibility.
