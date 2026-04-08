@@ -12,9 +12,15 @@ Commands:
   create-invite [--role <role>]   Create an invite code (admin only)
   make-admin <address>            Promote a user to admin (admin only)
   rooms                           List public Matrix rooms
+  joined-rooms                    List rooms you have joined
   join-room <roomId>              Join a Matrix room
-  read <roomId> [--limit N]       Read messages from a room
+  read <roomId> [--limit N] [--since-mins-ago N]
+                                  Read messages from a room
+  read-all [--limit N] [--since-mins-ago N]
+                                  Read messages from every joined room
   send <roomId> <message>         Send a signed message to a room
+  sync [--since TOKEN] [--timeout MS]
+                                  Long-poll for new Matrix events
   validate-chain <file|->         Validate a conversation in protocol text format
                                   Use - to read from stdin
   sign-text <sender> <message>    Sign a message against prior conversation on stdin
@@ -27,12 +33,31 @@ Environment:
                                   defaults to <host>-matrix-auth derived
                                   from SUBNET_API_BASE; only set if your
                                   subnet uses a custom value)
+  SUBNET_CLIENT_STATE_PATH        Directory for Matrix session + E2E crypto
+                                  state (optional — defaults to
+                                  ~/.subnet-client-state)
 `;
 
 function parseFlag(args, flag) {
   const idx = args.indexOf(flag);
   if (idx !== -1 && args[idx + 1]) return args[idx + 1];
   return undefined;
+}
+
+function parseReadOpts(args) {
+  const opts = {};
+  const limit = parseFlag(args, '--limit');
+  if (limit) opts.limit = parseInt(limit, 10);
+  const sinceMinsAgo = parseFlag(args, '--since-mins-ago');
+  if (sinceMinsAgo) opts.sinceMinsAgo = Number(sinceMinsAgo);
+  return opts;
+}
+
+function formatMessageLine(msg) {
+  const status = msg.accountability.signed
+    ? (msg.accountability.valid === true ? 'VALID' : msg.accountability.valid === null ? 'UNVERIFIABLE' : 'INVALID')
+    : 'UNSIGNED';
+  return `[${status}] ${msg.sender}: ${msg.body}`;
 }
 
 async function main() {
@@ -100,6 +125,13 @@ async function main() {
       break;
     }
 
+    case 'joined-rooms': {
+      await client.loginMatrix();
+      const rooms = await client.listJoinedRooms();
+      console.log(JSON.stringify(rooms, null, 2));
+      break;
+    }
+
     case 'join-room': {
       if (!args[1]) { console.error('Usage: subnet join-room <roomId>'); process.exit(1); }
       await client.loginMatrix();
@@ -109,17 +141,33 @@ async function main() {
     }
 
     case 'read': {
-      if (!args[1]) { console.error('Usage: subnet read <roomId> [--limit N]'); process.exit(1); }
+      if (!args[1]) { console.error('Usage: subnet read <roomId> [--limit N] [--since-mins-ago N]'); process.exit(1); }
       await client.loginMatrix();
-      const opts = {};
-      const limit = parseFlag(args, '--limit');
-      if (limit) opts.limit = parseInt(limit);
+      const opts = parseReadOpts(args);
       const data = await client.readMessages(args[1], opts);
       for (const msg of data.messages) {
-        const status = msg.accountability.signed
-          ? (msg.accountability.valid === true ? 'VALID' : msg.accountability.valid === null ? 'UNVERIFIABLE' : 'INVALID')
-          : 'UNSIGNED';
-        console.log(`[${status}] ${msg.sender}: ${msg.body}`);
+        console.log(formatMessageLine(msg));
+      }
+      break;
+    }
+
+    case 'read-all': {
+      await client.loginMatrix();
+      const opts = parseReadOpts(args);
+      const data = await client.readAllMessages(opts);
+      for (const [roomId, room] of Object.entries(data.rooms)) {
+        console.log(`\n=== ${roomId} ===`);
+        if (room.error) {
+          console.log(`  ERROR: ${room.error}`);
+          continue;
+        }
+        if (!room.messages || room.messages.length === 0) {
+          console.log('  (no messages)');
+          continue;
+        }
+        for (const msg of room.messages) {
+          console.log(formatMessageLine(msg));
+        }
       }
       break;
     }
@@ -131,6 +179,18 @@ async function main() {
       const result = await client.sendMessage(args[1], message);
       console.log('Sent:', result.event_id);
       console.log(result.accountability.message_with_sign);
+      break;
+    }
+
+    case 'sync': {
+      await client.loginMatrix();
+      const opts = {};
+      const since = parseFlag(args, '--since');
+      if (since) opts.since = since;
+      const timeout = parseFlag(args, '--timeout');
+      if (timeout) opts.timeout = parseInt(timeout, 10);
+      const data = await client.sync(opts);
+      console.log(JSON.stringify(data, null, 2));
       break;
     }
 
