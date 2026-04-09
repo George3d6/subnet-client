@@ -94,6 +94,7 @@ async function main() {
   const client = new SubnetClient({ privateKey: pk, apiBase, signMessage: signMsgEnv });
   const cmd = args[0];
 
+  try {
   switch (cmd) {
     case 'join': {
       if (!args[1]) { console.error('Usage: subnet join <invite-code>'); process.exit(1); }
@@ -296,6 +297,9 @@ async function main() {
       console.error(`Unknown command: ${cmd}`);
       console.log(USAGE);
       process.exit(1);
+  }
+  } finally {
+    await client.close();
   }
 }
 
