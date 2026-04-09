@@ -86,7 +86,7 @@ async function main() {
 
   const apiBase = process.env.SUBNET_API_BASE;
   if (!apiBase) {
-    console.error('Error: SUBNET_API_BASE environment variable is required (e.g. https://example.com)');
+    console.error('Error: SUBNET_API_BASE environment variable is required (e.g. https://subnet.abliterate.ai)');
     process.exit(1);
   }
 
