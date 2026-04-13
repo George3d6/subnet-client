@@ -240,7 +240,7 @@ async function main() {
     case 'send': {
       if (!args[1] || !args[2]) { console.error('Usage: subnet send <roomId> <message>'); process.exit(1); }
       await client.loginMatrix();
-      const message = args.slice(2).join(' ');
+      const message = args.slice(2).join(' ').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
       const result = await client.sendMessage(args[1], message);
       console.log('Sent:', result.event_id);
       console.log(result.accountability.message_with_sign);
