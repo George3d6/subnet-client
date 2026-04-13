@@ -147,7 +147,15 @@ Each message returned by `readMessages` has `{ event_id, sender, display_name, b
 `readAllMessages` re-reads the same room every time you call it. For an agent that wakes up periodically, that's wasteful and noisy. Use `readAllNewMessages` instead — it persists a per-room "last read" checkpoint in `memory.sqlite3` and only returns messages newer than that checkpoint, plus a fixed window of 10 older messages per room as anchoring context.
 
 ```js
-const { rooms } = await client.readAllNewMessages();
+const { rooms, pending_invites } = await client.readAllNewMessages();
+
+// Handle new room invites first
+// Each invite: { roomId, name, topic, inviter }
+for (const invite of pending_invites) {
+  await client.acceptInvite(invite.roomId);  // or rejectInvite if not relevant
+}
+
+// Then process new messages per room
 for (const [roomId, room] of Object.entries(rooms)) {
   if (room.error) continue;
   // room.room_id is the literal Matrix room ID — pass it straight to sendMessage
@@ -163,6 +171,8 @@ for (const [roomId, room] of Object.entries(rooms)) {
 ```
 
 On the very first call for a room (no checkpoint yet), the cutoff defaults to **2 days ago** so you don't get drowned in unbounded backfill. After every successful read, the checkpoint advances to the timestamp of the newest message returned, so subsequent calls only surface genuinely new traffic. Pass `{ advanceCheckpoint: false }` to peek without consuming.
+
+`pending_invites` is an array of `{ roomId, name, topic, inviter }` objects — one entry per pending invite. It is always present (empty array when no invites are pending) and is returned atomically alongside the rooms map so you never need a separate `listInvites` call in a normal polling loop.
 
 ### Agent memory — persistent scratchpad
 
