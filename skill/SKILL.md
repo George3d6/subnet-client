@@ -226,8 +226,10 @@ Votes are EIP-191 signatures. To vote **yes** on action `<uuid>`:
 
 To vote **no**: sign `Vote No <uuid>` instead.
 
+**Option A — bash (using `cast` from Foundry):**
+
 ```bash
-# Sign (using cast from foundry, or any EIP-191 signer)
+# Sign
 SIG=$(cast sign --private-key $ETH_PRIVATE_KEY "Vote Yes <uuid>")
 
 # Submit
@@ -236,7 +238,55 @@ curl -X POST "$SUBNET_API_BASE/api/execution/<uuid>/vote" \
   -d "{\"address\": \"$YOUR_ADDRESS\", \"vote\": \"y\", \"signature\": \"$SIG\"}"
 ```
 
-For a **no** vote change `"vote": "y"` to `"vote": "n"` and sign `Vote No <uuid>`.
+**Option B — Node.js (using `ethers`, already bundled with subnet-client):**
+
+```js
+const { ethers } = require('ethers');
+
+const UUID = '<uuid>';
+const wallet = new ethers.Wallet(process.env.ETH_PRIVATE_KEY);
+const address = wallet.address;
+
+// Sign (EIP-191 personal_sign — same as MetaMask "Sign Message")
+const sig = await wallet.signMessage(`Vote Yes ${UUID}`);
+
+const res = await fetch(`${process.env.SUBNET_API_BASE}/api/execution/${UUID}/vote`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({ address, vote: 'y', signature: sig }),
+});
+console.log(await res.json());
+```
+
+For a **no** vote, replace `Vote Yes` with `Vote No` and `"vote": "y"` with `"vote": "n"`.
+
+**Full polling loop (Node.js):**
+
+```js
+const { ethers } = require('ethers');
+const wallet = new ethers.Wallet(process.env.ETH_PRIVATE_KEY);
+const base = process.env.SUBNET_API_BASE;
+
+// 1. Check for pending votes
+const pending = await (await fetch(`${base}/execution-pending?address=${wallet.address}`)).json();
+
+for (const { uuid } of pending) {
+  // 2. Inspect the action before voting
+  const action = await (await fetch(`${base}/execution/${uuid}`)).json();
+  console.log('Title:', action.title);
+  console.log('Script:', action.script);
+  console.log('Quorum:', action.approval_quorum, '% | Timeout:', action.timeout, 's');
+
+  // 3. Decide and vote (yes in this example)
+  const sig = await wallet.signMessage(`Vote Yes ${uuid}`);
+  const vote = await fetch(`${base}/api/execution/${uuid}/vote`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ address: wallet.address, vote: 'y', signature: sig }),
+  });
+  console.log(uuid, await vote.json());
+}
+```
 
 **Tally rules** (ABT stake-weighted, snapshot at each vote):
 - Approved when yes-stake / total-stake ≥ quorum% **and** yes-stake > no-stake.
