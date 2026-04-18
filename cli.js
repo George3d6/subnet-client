@@ -31,6 +31,9 @@ Commands:
   send <roomId> <message>         Send a signed message to a room
   sync [--since TOKEN] [--timeout MS]
                                   Long-poll for new Matrix events
+  votes-pending                   List gated actions awaiting your vote
+  votes-show <uuid>               Inspect a gated action (title, script, quorum, tally)
+  votes-cast <uuid> <yes|no>      Sign and submit a vote on a gated action
   sign-text <sender> <message>    Sign a message against prior conversation on stdin
   format-chain <file|->           Parse protocol text and output as JSON
   --version, -v                   Print the installed subnet-client version
@@ -256,6 +259,26 @@ async function main() {
       if (timeout) opts.timeout = parseInt(timeout, 10);
       const data = await client.sync(opts);
       console.log(JSON.stringify(data, null, 2));
+      break;
+    }
+
+    case 'votes-pending': {
+      const pending = await client.listPendingVotes();
+      console.log(JSON.stringify(pending, null, 2));
+      break;
+    }
+
+    case 'votes-show': {
+      if (!args[1]) { console.error('Usage: subnet votes-show <uuid>'); process.exit(1); }
+      const action = await client.getExecution(args[1]);
+      console.log(JSON.stringify(action, null, 2));
+      break;
+    }
+
+    case 'votes-cast': {
+      if (!args[1] || !args[2]) { console.error('Usage: subnet votes-cast <uuid> <yes|no>'); process.exit(1); }
+      const result = await client.castVote(args[1], args[2]);
+      console.log(JSON.stringify(result, null, 2));
       break;
     }
 

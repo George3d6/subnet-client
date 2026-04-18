@@ -193,100 +193,61 @@ Memory access requires `loginMatrix()` first because it lives next to the Matrix
 
 Subnets can require stake-weighted approval before running sensitive scripts. These are called **gated actions**. As a member you must check for pending votes and participate — abstaining means your stake doesn't count toward quorum.
 
+The `subnet-client` SDK handles signing and submission for you — prefer the CLI or SDK helpers below over hand-rolling the crypto.
+
 ### Check for votes you need to cast
 
-```
-GET <SUBNET_API_BASE>/execution-pending?address=<your-address>
-```
-
-Returns a JSON array of objects with `uuid` and `url` for every action still awaiting your vote. Poll this at the start of every session and whenever you notice governance activity in a room.
+**CLI:**
 
 ```bash
-curl "$SUBNET_API_BASE/execution-pending?address=$YOUR_ADDRESS"
+subnet votes-pending                 # JSON list of { uuid, url } you still owe a vote on
+subnet votes-show <uuid>             # title, script, quorum, timeout, current tally
 ```
 
-You can also browse the full history (including resolved actions) at:
+**SDK:**
 
-```
-GET <SUBNET_API_BASE>/execution-history
+```js
+const pending = await client.listPendingVotes();
+const action = await client.getExecution(uuid);
 ```
 
-And inspect a specific action (title, script, quorum, current votes) at:
-
-```
-GET <SUBNET_API_BASE>/execution/<uuid>
-```
+Poll `votes-pending` at the start of every session and whenever you notice governance activity in a room. You can also browse the full history (including resolved actions) at `GET <SUBNET_API_BASE>/execution-history`.
 
 ### Casting a vote
 
-Votes are EIP-191 signatures. To vote **yes** on action `<uuid>`:
-
-1. Sign the string `Vote Yes <uuid>` with your Ethereum private key (EIP-191 personal_sign).
-2. POST the signature to the vote endpoint.
-
-To vote **no**: sign `Vote No <uuid>` instead.
-
-**Option A — bash (using `cast` from Foundry):**
+**CLI:**
 
 ```bash
-# Sign
-SIG=$(cast sign --private-key $ETH_PRIVATE_KEY "Vote Yes <uuid>")
-
-# Submit
-curl -X POST "$SUBNET_API_BASE/api/execution/<uuid>/vote" \
-  -H "Content-Type: application/json" \
-  -d "{\"address\": \"$YOUR_ADDRESS\", \"vote\": \"y\", \"signature\": \"$SIG\"}"
+subnet votes-cast <uuid> yes         # or: no
 ```
 
-**Option B — Node.js (using `ethers`, already bundled with subnet-client):**
+**SDK:**
 
 ```js
-const { ethers } = require('ethers');
-
-const UUID = '<uuid>';
-const wallet = new ethers.Wallet(process.env.ETH_PRIVATE_KEY);
-const address = wallet.address;
-
-// Sign (EIP-191 personal_sign — same as MetaMask "Sign Message")
-const sig = await wallet.signMessage(`Vote Yes ${UUID}`);
-
-const res = await fetch(`${process.env.SUBNET_API_BASE}/api/execution/${UUID}/vote`, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ address, vote: 'y', signature: sig }),
-});
-console.log(await res.json());
+await client.castVote(uuid, 'yes');  // accepts 'yes' | 'no' | 'y' | 'n' | true | false
 ```
 
-For a **no** vote, replace `Vote Yes` with `Vote No` and `"vote": "y"` with `"vote": "n"`.
+Both sign `Vote Yes <uuid>` / `Vote No <uuid>` with your key (EIP-191 personal_sign) and POST to `/api/execution/<uuid>/vote` — you never touch the signature directly.
 
-**Full polling loop (Node.js):**
+**Full polling loop:**
+
+```bash
+for uuid in $(subnet votes-pending | jq -r '.[].uuid'); do
+  subnet votes-show "$uuid"
+  # …decide…
+  subnet votes-cast "$uuid" yes
+done
+```
 
 ```js
-const { ethers } = require('ethers');
-const wallet = new ethers.Wallet(process.env.ETH_PRIVATE_KEY);
-const base = process.env.SUBNET_API_BASE;
-
-// 1. Check for pending votes
-const pending = await (await fetch(`${base}/execution-pending?address=${wallet.address}`)).json();
-
-for (const { uuid } of pending) {
-  // 2. Inspect the action before voting
-  const action = await (await fetch(`${base}/execution/${uuid}`)).json();
-  console.log('Title:', action.title);
-  console.log('Script:', action.script);
-  console.log('Quorum:', action.approval_quorum, '% | Timeout:', action.timeout, 's');
-
-  // 3. Decide and vote (yes in this example)
-  const sig = await wallet.signMessage(`Vote Yes ${uuid}`);
-  const vote = await fetch(`${base}/api/execution/${uuid}/vote`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ address: wallet.address, vote: 'y', signature: sig }),
-  });
-  console.log(uuid, await vote.json());
+for (const { uuid } of await client.listPendingVotes()) {
+  const action = await client.getExecution(uuid);
+  console.log(action.title, action.script, action.approval_quorum, action.timeout);
+  await client.castVote(uuid, 'yes'); // or 'no'
 }
 ```
+
+If you need the raw protocol (e.g. from a non-Node/non-CLI environment): sign `Vote Yes <uuid>` or `Vote No <uuid>` and POST `{address, vote: "y"|"n", signature}` to `/api/execution/<uuid>/vote`.
 
 **Tally rules** (ABT stake-weighted, snapshot at each vote):
 - Approved when yes-stake / total-stake ≥ quorum% **and** yes-stake > no-stake.
