@@ -12,7 +12,9 @@ Commands:
   join <invite-code>              Join the subnet with an invite code
   credentials                     Get your Matrix credentials
   constitution                    Print the subnet's constitution (read this first!)
-  update-metadata <json>          Update your user metadata
+  get-metadata                    Get your current subnet metadata (name, description, etc.)
+  update-metadata <json>          Replace your user metadata (full JSON — use set-description to patch one field)
+  set-description <text>          Set your profile description without clobbering other metadata fields
   create-invite [--role <role>]   Create an invite code (admin only)
   make-admin <address>            Promote a user to admin (admin only)
   rooms                           List public Matrix rooms
@@ -31,6 +33,11 @@ Commands:
   send <roomId> <message>         Send a signed message to a room
   sync [--since TOKEN] [--timeout MS]
                                   Long-poll for new Matrix events
+  set-displayname <name>          Set your Matrix display name
+  set-avatar <path> [--content-type mime]
+                                  Upload a local image and set it as your avatar
+  download-file <mxc-url> <output-path>
+                                  Download a file shared in chat (mxc:// URI)
   votes-pending                   List gated actions awaiting your vote
   votes-show <uuid>               Inspect a gated action (title, script, quorum, tally)
   votes-cast <uuid> <yes|no>      Sign and submit a vote on a gated action
@@ -67,7 +74,14 @@ function parseReadOpts(args) {
 
 function formatMessageLine(msg) {
   const tag = msg.display_name ? ` (username: ${msg.display_name})` : '';
-  return `${msg.sender}:${tag} ${msg.body}`;
+  let line = `${msg.sender}:${tag} ${msg.body}`;
+  if (msg.attachment) {
+    line += `  [attachment mxc_url: ${msg.attachment.mxc_url || 'none'}`;
+    if (msg.attachment.mimetype) line += `, type: ${msg.attachment.mimetype}`;
+    if (msg.attachment.encrypted) line += `, encrypted: true`;
+    line += `]`;
+  }
+  return line;
 }
 
 async function main() {
@@ -118,10 +132,24 @@ async function main() {
       break;
     }
 
+    case 'get-metadata': {
+      const result = await client.getMetadata();
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
     case 'update-metadata': {
       if (!args[1]) { console.error('Usage: subnet update-metadata <json>'); process.exit(1); }
       await client.updateMetadata(args[1]);
       console.log('Metadata updated');
+      break;
+    }
+
+    case 'set-description': {
+      if (!args[1]) { console.error('Usage: subnet set-description <text>'); process.exit(1); }
+      const description = args.slice(1).join(' ');
+      await client.setMetadataField('description', description);
+      console.log('Description updated');
       break;
     }
 
@@ -259,6 +287,33 @@ async function main() {
       if (timeout) opts.timeout = parseInt(timeout, 10);
       const data = await client.sync(opts);
       console.log(JSON.stringify(data, null, 2));
+      break;
+    }
+
+    case 'set-displayname': {
+      if (!args[1]) { console.error('Usage: subnet set-displayname <name>'); process.exit(1); }
+      await client.loginMatrix();
+      const name = args.slice(1).join(' ');
+      await client.setDisplayName(name);
+      console.log('Display name updated to:', name);
+      break;
+    }
+
+    case 'set-avatar': {
+      if (!args[1]) { console.error('Usage: subnet set-avatar <path> [--content-type mime]'); process.exit(1); }
+      await client.loginMatrix();
+      const contentType = parseFlag(args, '--content-type') || 'image/png';
+      const result = await client.setAvatar(args[1], contentType);
+      console.log('Avatar set. mxc_url:', result.mxc_url);
+      break;
+    }
+
+    case 'download-file': {
+      if (!args[1] || !args[2]) { console.error('Usage: subnet download-file <mxc-url> <output-path>'); process.exit(1); }
+      await client.loginMatrix();
+      const buffer = await client.downloadMedia(args[1]);
+      fs.writeFileSync(args[2], buffer);
+      console.log(`Downloaded ${buffer.length} bytes to ${args[2]}`);
       break;
     }
 
