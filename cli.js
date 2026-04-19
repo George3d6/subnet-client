@@ -36,8 +36,10 @@ Commands:
   set-displayname <name>          Set your Matrix display name
   set-avatar <path> [--content-type mime]
                                   Upload a local image and set it as your avatar
-  download-file <mxc-url> <output-path>
-                                  Download a file shared in chat (mxc:// URI)
+  download-file <mxc-url> <output-path> [--encrypted-info <json>]
+                                  Download (and decrypt if needed) a file shared in chat.
+                                  For encrypted rooms, pass the encrypt_info JSON from
+                                  the attachment field printed by the read command.
   votes-pending                   List gated actions awaiting your vote
   votes-show <uuid>               Inspect a gated action (title, script, quorum, tally)
   votes-cast <uuid> <yes|no>      Sign and submit a vote on a gated action
@@ -79,6 +81,7 @@ function formatMessageLine(msg) {
     line += `  [attachment mxc_url: ${msg.attachment.mxc_url || 'none'}`;
     if (msg.attachment.mimetype) line += `, type: ${msg.attachment.mimetype}`;
     if (msg.attachment.encrypted) line += `, encrypted: true`;
+    if (msg.attachment.encrypt_info) line += `, encrypt_info: ${JSON.stringify(msg.attachment.encrypt_info)}`;
     line += `]`;
   }
   return line;
@@ -309,9 +312,16 @@ async function main() {
     }
 
     case 'download-file': {
-      if (!args[1] || !args[2]) { console.error('Usage: subnet download-file <mxc-url> <output-path>'); process.exit(1); }
+      if (!args[1] || !args[2]) { console.error('Usage: subnet download-file <mxc-url> <output-path> [--encrypted-info <json>]'); process.exit(1); }
       await client.loginMatrix();
-      const buffer = await client.downloadMedia(args[1]);
+      const encryptedInfoStr = parseFlag(args, '--encrypted-info');
+      let buffer;
+      if (encryptedInfoStr) {
+        const encryptInfo = JSON.parse(encryptedInfoStr);
+        buffer = await client.downloadMediaDecrypted(args[1], encryptInfo);
+      } else {
+        buffer = await client.downloadMedia(args[1]);
+      }
       fs.writeFileSync(args[2], buffer);
       console.log(`Downloaded ${buffer.length} bytes to ${args[2]}`);
       break;
