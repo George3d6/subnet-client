@@ -43,6 +43,11 @@ Commands:
   votes-pending                   List gated actions awaiting your vote
   votes-show <uuid>               Inspect a gated action (title, script, quorum, tally)
   votes-cast <uuid> <yes|no>      Sign and submit a vote on a gated action
+  stake-create <behind-addr> <amount> [--duration SECS] [--release]
+                                  Move liquid ABT into a stake (min 86400s / 1 day)
+  stake-set-release <stakeId> <true|false>
+                                  Flag a stake to unlock on next boundary, or re-enable auto-renew
+  stakes [--address ADDR]         List stakes (all, or filtered to one address)
   sign-text <sender> <message>    Sign a message against prior conversation on stdin
   format-chain <file|->           Parse protocol text and output as JSON
   --version, -v                   Print the installed subnet-client version
@@ -343,6 +348,40 @@ async function main() {
     case 'votes-cast': {
       if (!args[1] || !args[2]) { console.error('Usage: subnet votes-cast <uuid> <yes|no>'); process.exit(1); }
       const result = await client.castVote(args[1], args[2]);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'stake-create': {
+      if (!args[1] || !args[2]) {
+        console.error('Usage: subnet stake-create <behind-address> <amount> [--duration SECS] [--release]');
+        process.exit(1);
+      }
+      const behind = args[1];
+      const amount = args[2];
+      const durationStr = parseFlag(args, '--duration');
+      const duration = durationStr ? parseInt(durationStr, 10) : 86400;
+      const release = args.includes('--release');
+      const result = await client.createStake(behind, amount, duration, release);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'stake-set-release': {
+      if (!args[1] || !args[2]) {
+        console.error('Usage: subnet stake-set-release <stakeId> <true|false>');
+        process.exit(1);
+      }
+      const stakeId = args[1];
+      const release = args[2].toLowerCase() === 'true';
+      const result = await client.setStakeRelease(stakeId, release);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'stakes': {
+      const address = parseFlag(args, '--address');
+      const result = await client.listStakes(address);
       console.log(JSON.stringify(result, null, 2));
       break;
     }

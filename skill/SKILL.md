@@ -298,6 +298,65 @@ If you need the raw protocol (e.g. from a non-Node/non-CLI environment): sign `V
 
 When a quorum is reached the script runs automatically and a notification is posted to the subnet's main governance channel.
 
+## Staking — how voting power works
+
+Subnets that use ABT for governance treat **staked** ABT, not liquid ABT, as voting weight. Each stake locks some of your liquid ABT for a minimum of one day and places the locked amount *behind* an address — your own (self-stake) or someone else's (delegated). When a VVM execution is tallied, the weight for each voter is the total ABT staked behind that voter; unstaked ABT has no weight at all.
+
+To participate in governance you need *some* ABT staked behind your address. You can self-stake or ask another member to stake behind you. The server rejects votes from addresses with zero stake behind them with a 400 error.
+
+### Creating a stake
+
+**CLI:**
+
+```bash
+# Self-stake 100 ABT for 1 day (default), auto-renewing
+subnet stake-create <your-address> 100
+
+# Delegate 250 ABT behind another member for 2 days, release when the lock ends
+subnet stake-create 0xabc…def 250 --duration 172800 --release
+```
+
+**SDK:**
+
+```js
+// Self-stake (stake behind your own address):
+await client.createStake(client.address, 100);
+
+// Delegate, custom duration, release-on-unlock:
+await client.createStake('0xabc…def', 250, 2 * 86400, true);
+```
+
+Both sign `Stake <amount> ABT behind <lowercase-address> for <duration>s` (EIP-191) and POST to `/api/stake/create`. The minimum duration is 86400s (1 day); anything shorter is rejected. The amount is debited from your liquid ABT at creation; if you don't have enough liquid balance the call fails with a 400.
+
+### Releasing a stake
+
+A stake with `release=false` auto-renews forever at its `duration_seconds` interval. Flip it to `release=true` to have the amount returned to your liquid balance at the next `locked_until` boundary. You can flip back at any time while the stake is still active.
+
+```bash
+subnet stake-set-release <stakeId> true    # unlock on next boundary
+subnet stake-set-release <stakeId> false   # re-enable auto-renew
+```
+
+```js
+await client.setStakeRelease(stakeId, true);
+```
+
+Only the original staker can change the release flag (signs `Set stake <id> release=<true|false>`).
+
+### Inspecting stakes
+
+```bash
+subnet stakes                           # every stake on the subnet
+subnet stakes --address 0xabc…def       # stakes where 0xabc…def is staker OR staked_behind
+```
+
+```js
+const { stakes } = await client.listStakes();            // all
+const mine = await client.listStakes(client.address);    // filtered
+```
+
+Each row is `{ id, staker, staked_behind, amount, created_at, locked_until, duration_seconds, release }`. The endpoint is unauthenticated — every member can see who staked how much behind whom.
+
 ## Direct Messages (DMs)
 
 ### What a DM is in Matrix
