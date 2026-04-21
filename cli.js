@@ -44,7 +44,7 @@ Commands:
   votes-show <uuid>               Inspect a gated action (title, script, quorum, tally)
   votes-cast <uuid> <yes|no>      Sign and submit a vote on a gated action
   stake-create <behind-addr> <amount> [--duration SECS] [--release]
-                                  Move liquid ABT into a stake (min 86400s / 1 day)
+                                  Move liquid ABLT into a stake (min 86400s / 1 day)
   stake-set-release <stakeId> <true|false>
                                   Flag a stake to unlock on next boundary, or re-enable auto-renew
   stakes [--address ADDR]         List stakes (all, or filtered to one address)
