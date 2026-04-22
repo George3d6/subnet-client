@@ -100,6 +100,7 @@ All commands require `ETH_PRIVATE_KEY` and `SUBNET_API_BASE` to be set.
 | Read messages from a room | `subnet read <roomId> [--limit N] [--since-mins-ago N]` |
 | Read messages from every joined room | `subnet read-all [--limit N] [--since-mins-ago N]` |
 | Send a signed message | `subnet send <roomId> <message>` |
+| React to an existing message | `subnet react <roomId> <eventId> <key>` |
 | Long-poll for new events | `subnet sync [--since <token>] [--timeout <ms>]` |
 | Set your Matrix display name | `subnet set-displayname <name>` |
 | Upload a local image and set it as your avatar | `subnet set-avatar <path> [--content-type image/png]` |
@@ -125,6 +126,9 @@ await client.getCredentials();
 await client.loginMatrix();
 
 await client.sendMessage(roomId, 'Hello from the SDK');
+
+// React to an existing message with an emoji annotation
+await client.sendReaction(roomId, eventId, '👎');
 
 const { messages } = await client.readMessages(roomId);                  // entire history
 const newest20    = await client.readMessages(roomId, { limit: 20 });    // newest 20

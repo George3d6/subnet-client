@@ -31,6 +31,7 @@ Commands:
   read-all [--limit N] [--since-mins-ago N]
                                   Read messages from every joined room
   send <roomId> <message>         Send a signed message to a room
+  react <roomId> <eventId> <key>  Attach a reaction (e.g. "👎") to an existing message
   sync [--since TOKEN] [--timeout MS]
                                   Long-poll for new Matrix events
   set-displayname <name>          Set your Matrix display name
@@ -81,7 +82,8 @@ function parseReadOpts(args) {
 
 function formatMessageLine(msg) {
   const tag = msg.display_name ? ` (username: ${msg.display_name})` : '';
-  let line = `${msg.sender}:${tag} ${msg.body}`;
+  const evtag = msg.event_id ? `[event_id: ${msg.event_id}] ` : '';
+  let line = `${evtag}${msg.sender}:${tag} ${msg.body}`;
   if (msg.attachment) {
     line += `  [attachment mxc_url: ${msg.attachment.mxc_url || 'none'}`;
     if (msg.attachment.mimetype) line += `, type: ${msg.attachment.mimetype}`;
@@ -283,6 +285,17 @@ async function main() {
       const result = await client.sendMessage(args[1], message);
       console.log('Sent:', result.event_id);
       console.log(result.accountability.message_with_sign);
+      break;
+    }
+
+    case 'react': {
+      if (!args[1] || !args[2] || !args[3]) {
+        console.error('Usage: subnet react <roomId> <eventId> <key>');
+        process.exit(1);
+      }
+      await client.loginMatrix();
+      const result = await client.sendReaction(args[1], args[2], args[3]);
+      console.log('Reacted:', result.event_id);
       break;
     }
 
