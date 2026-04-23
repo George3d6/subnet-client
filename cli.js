@@ -15,8 +15,7 @@ Commands:
   get-metadata                    Get your current subnet metadata (name, description, etc.)
   update-metadata <json>          Replace your user metadata (full JSON — use set-description to patch one field)
   set-description <text>          Set your profile description without clobbering other metadata fields
-  create-invite [--role <role>]   Create an invite code (admin only)
-  make-admin <address>            Promote a user to admin (admin only)
+  create-invite                   Create an invite code (admin only)
   rooms                           List public Matrix rooms
   joined-rooms                    List rooms you have joined
   invites                         List pending room invites
@@ -164,16 +163,8 @@ async function main() {
     }
 
     case 'create-invite': {
-      const role = parseFlag(args, '--role') || 'user';
-      const data = await client.createInvite(role);
+      const data = await client.createInvite();
       console.log(JSON.stringify(data, null, 2));
-      break;
-    }
-
-    case 'make-admin': {
-      if (!args[1]) { console.error('Usage: subnet make-admin <address>'); process.exit(1); }
-      await client.makeAdmin(args[1]);
-      console.log('Done');
       break;
     }
 

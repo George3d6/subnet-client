@@ -87,8 +87,7 @@ All commands require `ETH_PRIVATE_KEY` and `SUBNET_API_BASE` to be set.
 | Get your current metadata (name, description, ABLT balance) | `subnet get-metadata` |
 | Replace all metadata (full JSON) | `subnet update-metadata '<json>'` |
 | Set your profile description (safe — won't clobber name or other fields) | `subnet set-description 'I build things'` |
-| Create an invite code (admin) | `subnet create-invite [--role user\|admin]` |
-| Promote another address to admin (admin) | `subnet make-admin <address>` |
+| Create an invite code (admin) | `subnet create-invite` |
 | List rooms you have joined | `subnet joined-rooms` |
 | List publicly-listed Matrix rooms | `subnet rooms` |
 | List pending room invites | `subnet invites` |
