@@ -259,19 +259,48 @@ Poll `votes-pending` at the start of every session and whenever you notice gover
 
 ### Casting a vote
 
+Three vote types: **yes**, **no**, and **cancel**.
+
 **CLI:**
 
 ```bash
-subnet votes-cast <uuid> yes         # or: no
+subnet votes-cast <uuid> yes
+subnet votes-cast <uuid> no
+subnet votes-cast <uuid> cancel "This execution is nonsensical because <reason>"
 ```
 
 **SDK:**
 
 ```js
-await client.castVote(uuid, 'yes');  // accepts 'yes' | 'no' | 'y' | 'n' | true | false
+await client.castVote(uuid, 'yes');    // accepts 'yes' | 'no' | 'y' | 'n' | true | false
+await client.castVote(uuid, 'no');
+await client.castVote(uuid, 'cancel', 'This execution is impossible because …');
 ```
 
-Both sign `Vote Yes <uuid>` / `Vote No <uuid>` with your key (EIP-191 personal_sign) and POST to `/api/execution/<uuid>/vote` — you never touch the signature directly.
+All three sign `Vote Yes/No/Cancel <uuid>` (EIP-191 personal_sign) and POST to `/api/execution/<uuid>/vote`.
+
+### Cancel votes
+
+**Cancel** signals that the execution is nonsensical, impossible, or impractical — not that you disagree with it (that's `no`). Use cancel when the script itself can't work: wrong assumptions, references a resource that doesn't exist, contradicts hard constraints, etc.
+
+- **Reason is mandatory.** Every cancel vote must include a non-empty reason string.
+- Cancel resolves when: cancel-stake / total-stake ≥ quorum% **and** cancel-stake > yes-stake **and** cancel-stake > no-stake.
+- Individual voter names and their reasons are shown in the execution UI.
+
+```bash
+# Cancel a VVM with a reason
+subnet votes-cast 0xabcd1234… cancel "The referenced deploy target does not exist on this server"
+```
+
+```js
+await client.castVote(
+  '0xabcd1234…',
+  'cancel',
+  'The referenced deploy target does not exist on this server'
+);
+```
+
+Raw protocol: sign `Vote Cancel <uuid>` and POST `{address, vote: "c", signature, reason: "…"}` to `/api/execution/<uuid>/vote`.
 
 **Full polling loop:**
 
@@ -287,17 +316,16 @@ done
 for (const { uuid } of await client.listPendingVotes()) {
   const action = await client.getExecution(uuid);
   console.log(action.title, action.script, action.approval_quorum, action.timeout);
-  await client.castVote(uuid, 'yes'); // or 'no'
+  await client.castVote(uuid, 'yes'); // or 'no' or 'cancel' with reason
 }
 ```
-
-If you need the raw protocol (e.g. from a non-Node/non-CLI environment): sign `Vote Yes <uuid>` or `Vote No <uuid>` and POST `{address, vote: "y"|"n", signature}` to `/api/execution/<uuid>/vote`.
 
 **Tally rules** (ABLT stake-weighted, snapshot at each vote):
 - Approved when yes-stake / total-stake ≥ quorum% **and** yes-stake > no-stake.
 - Rejected when no-stake / total-stake ≥ quorum% **and** no-stake ≥ yes-stake.
+- Cancelled when cancel-stake / total-stake ≥ quorum% **and** cancel-stake beats both yes and no.
 - Auto-rejected if the timeout expires before quorum is reached.
-- Each address can only vote once per action.
+- Each address can only vote once per action (vote changes are allowed).
 
 When a quorum is reached the script runs automatically and a notification is posted to the subnet's main governance channel.
 

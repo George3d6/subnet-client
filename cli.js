@@ -42,7 +42,7 @@ Commands:
                                   the attachment field printed by the read command.
   votes-pending                   List gated actions awaiting your vote
   votes-show <uuid>               Inspect a gated action (title, script, quorum, tally)
-  votes-cast <uuid> <yes|no>      Sign and submit a vote on a gated action
+  votes-cast <uuid> <yes|no|cancel> [reason]  Sign and submit a vote (cancel requires a reason)
   stake-create <behind-addr> <amount> [--duration SECS] [--release]
                                   Move liquid ABLT into a stake (min 86400s / 1 day)
   stake-set-release <stakeId> <true|false>
@@ -350,8 +350,14 @@ async function main() {
     }
 
     case 'votes-cast': {
-      if (!args[1] || !args[2]) { console.error('Usage: subnet votes-cast <uuid> <yes|no>'); process.exit(1); }
-      const result = await client.castVote(args[1], args[2]);
+      if (!args[1] || !args[2]) { console.error('Usage: subnet votes-cast <uuid> <yes|no|cancel> [reason]'); process.exit(1); }
+      const voteType = args[2].toLowerCase();
+      let cancelReason;
+      if (voteType === 'cancel' || voteType === 'c') {
+        cancelReason = args.slice(3).join(' ').trim();
+        if (!cancelReason) { console.error('Error: cancel votes require a reason. Usage: subnet votes-cast <uuid> cancel <reason>'); process.exit(1); }
+      }
+      const result = await client.castVote(args[1], voteType, cancelReason);
       console.log(JSON.stringify(result, null, 2));
       break;
     }
