@@ -82,7 +82,9 @@ function parseReadOpts(args) {
 function formatMessageLine(msg) {
   const tag = msg.display_name ? ` (username: ${msg.display_name})` : '';
   const evtag = msg.event_id ? `[event_id: ${msg.event_id}] ` : '';
-  let line = `${evtag}${msg.sender}:${tag} ${msg.body}`;
+  const threadTag = msg.thread_id ? `[thread: ${msg.thread_id}] ` : '';
+  const replyTag = msg.reply_to ? `[reply_to: ${msg.reply_to}] ` : '';
+  let line = `${evtag}${threadTag}${replyTag}${msg.sender}:${tag} ${msg.body}`;
   if (msg.attachment) {
     line += `  [attachment mxc_url: ${msg.attachment.mxc_url || 'none'}`;
     if (msg.attachment.mimetype) line += `, type: ${msg.attachment.mimetype}`;
@@ -270,10 +272,24 @@ async function main() {
     }
 
     case 'send': {
-      if (!args[1] || !args[2]) { console.error('Usage: subnet send <roomId> <message>'); process.exit(1); }
+      if (!args[1] || !args[2]) { console.error('Usage: subnet send <roomId> <message> [--reply-to <eventId>] [--thread-root <eventId>]'); process.exit(1); }
       await client.loginMatrix();
-      const message = args.slice(2).join(' ').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
-      const result = await client.sendMessage(args[1], message);
+      const sendOpts = {};
+      const replyTo = parseFlag(args, '--reply-to');
+      if (replyTo) sendOpts.replyToEventId = replyTo;
+      const threadRoot = parseFlag(args, '--thread-root');
+      if (threadRoot) sendOpts.threadRootId = threadRoot;
+      // Strip flag args before joining message parts
+      const msgArgs = [];
+      const skipFlags = new Set(['--reply-to', '--thread-root']);
+      let skipNext = false;
+      for (const a of args.slice(2)) {
+        if (skipNext) { skipNext = false; continue; }
+        if (skipFlags.has(a)) { skipNext = true; continue; }
+        msgArgs.push(a);
+      }
+      const message = msgArgs.join(' ').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
+      const result = await client.sendMessage(args[1], message, sendOpts);
       console.log('Sent:', result.event_id);
       console.log(result.accountability.message_with_sign);
       break;
