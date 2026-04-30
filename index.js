@@ -9,7 +9,7 @@ const {
   MAX_HISTORY_CHARS
 } = require('./lib/accountability');
 
-const { E2EMatrixClient } = require('./lib/matrix_e2e');
+const { E2EMatrixClient } = require('#matrix-impl');
 const { SubnetClient, deriveSignMessage } = require('./lib/subnet');
 
 module.exports = {
