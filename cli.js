@@ -17,14 +17,25 @@ Commands:
   set-description <text>          Set your profile description without clobbering other metadata fields
   create-invite                   Create an invite code (admin only)
   rooms                           List public Matrix rooms
-  joined-rooms                    List rooms you have joined
-  invites                         List pending room invites
-  accept-invite <roomId>          Accept a pending room invite
-  reject-invite <roomId>          Decline a pending room invite
-  join-room <roomId>              Join a Matrix room
+  joined-rooms [--ids-only] [--no-spaces]
+                                  List rooms you have joined (with name/topic/space info).
+                                  --no-spaces filters out m.space rooms.
+  joined-spaces [--ids-only]      List only the m.space rooms you have joined
+  invites                         List pending room/space invites
+  accept-invite <roomId>          Accept a pending room or space invite
+  reject-invite <roomId>          Decline a pending invite
+  join-room <roomId>              Join a Matrix room (or space)
   create-room [--name N] [--topic T] [--public] [--unencrypted] [--invite addr,...]
                                   Create a new Matrix room (E2E by default)
-  leave-room <roomId>             Leave (and forget) a room
+  create-space [--name N] [--topic T] [--public] [--invite addr,...] [--child roomId,...]
+                                  Create a new Matrix Space (never E2E-encrypted)
+  invite-user <roomId> <userId>   Invite a user to a room or space
+  space-children <spaceId>        List child rooms of a space
+  add-to-space <spaceId> <roomId> [--suggested] [--order ORDER]
+                                  Add a room as a child of a space
+  remove-from-space <spaceId> <roomId>
+                                  Remove a child room from a space
+  leave-room <roomId>             Leave (and forget) a room or space
   read <roomId> [--limit N] [--since-mins-ago N]
                                   Read messages from a room (returns all by default)
   read-all [--limit N] [--since-mins-ago N]
@@ -179,8 +190,34 @@ async function main() {
 
     case 'joined-rooms': {
       await client.loginMatrix();
-      const rooms = await client.listJoinedRooms();
-      console.log(JSON.stringify(rooms, null, 2));
+      const noSpaces = args.includes('--no-spaces');
+      if (args.includes('--ids-only')) {
+        let rooms = await client.listJoinedRooms();
+        if (noSpaces) {
+          // Filter out spaces — costs N state reads but matches the
+          // detailed output's behavior so callers get a consistent shape.
+          const detailed = await client.listJoinedRoomsWithNames();
+          const spaceIds = new Set(detailed.filter(r => r.is_space).map(r => r.room_id));
+          rooms = rooms.filter(id => !spaceIds.has(id));
+        }
+        console.log(JSON.stringify(rooms, null, 2));
+      } else {
+        let rooms = await client.listJoinedRoomsWithNames();
+        if (noSpaces) rooms = rooms.filter(r => !r.is_space);
+        console.log(JSON.stringify(rooms, null, 2));
+      }
+      break;
+    }
+
+    case 'joined-spaces': {
+      await client.loginMatrix();
+      const detailed = await client.listJoinedRoomsWithNames();
+      const spaces = detailed.filter(r => r.is_space);
+      if (args.includes('--ids-only')) {
+        console.log(JSON.stringify(spaces.map(r => r.room_id), null, 2));
+      } else {
+        console.log(JSON.stringify(spaces, null, 2));
+      }
       break;
     }
 
@@ -227,6 +264,59 @@ async function main() {
       const inviteList = parseFlag(args, '--invite');
       if (inviteList) opts.invite = inviteList.split(',').map(s => s.trim()).filter(Boolean);
       const result = await client.createRoom(opts);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'create-space': {
+      await client.loginMatrix();
+      const opts = {};
+      const name = parseFlag(args, '--name');
+      if (name) opts.name = name;
+      const topic = parseFlag(args, '--topic');
+      if (topic) opts.topic = topic;
+      if (args.includes('--public')) opts.visibility = 'public';
+      const inviteList = parseFlag(args, '--invite');
+      if (inviteList) opts.invite = inviteList.split(',').map(s => s.trim()).filter(Boolean);
+      const childList = parseFlag(args, '--child');
+      if (childList) opts.children = childList.split(',').map(s => s.trim()).filter(Boolean);
+      const result = await client.createSpace(opts);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'invite-user': {
+      if (!args[1] || !args[2]) { console.error('Usage: subnet invite-user <roomId> <userId>'); process.exit(1); }
+      await client.loginMatrix();
+      const result = await client.inviteUser(args[1], args[2]);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'space-children': {
+      if (!args[1]) { console.error('Usage: subnet space-children <spaceId>'); process.exit(1); }
+      await client.loginMatrix();
+      const children = await client.listSpaceChildren(args[1]);
+      console.log(JSON.stringify(children, null, 2));
+      break;
+    }
+
+    case 'add-to-space': {
+      if (!args[1] || !args[2]) { console.error('Usage: subnet add-to-space <spaceId> <roomId> [--suggested] [--order ORDER]'); process.exit(1); }
+      await client.loginMatrix();
+      const opts = {};
+      if (args.includes('--suggested')) opts.suggested = true;
+      const order = parseFlag(args, '--order');
+      if (order) opts.order = order;
+      const result = await client.addRoomToSpace(args[1], args[2], opts);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'remove-from-space': {
+      if (!args[1] || !args[2]) { console.error('Usage: subnet remove-from-space <spaceId> <roomId>'); process.exit(1); }
+      await client.loginMatrix();
+      const result = await client.removeRoomFromSpace(args[1], args[2]);
       console.log(JSON.stringify(result, null, 2));
       break;
     }
