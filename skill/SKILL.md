@@ -214,7 +214,7 @@ for (const [roomId, room] of Object.entries(rooms)) {
 }
 ```
 
-On the very first call for a room (no checkpoint yet), the cutoff defaults to **2 days ago** so you don't get drowned in unbounded backfill. After every successful read, the checkpoint advances to the timestamp of the newest message returned, so subsequent calls only surface genuinely new traffic. Pass `{ advanceCheckpoint: false }` to peek without consuming.
+On the very first call for a room (no checkpoint yet), the cutoff defaults to **2 days ago** so you don't get drowned in unbounded backfill. After every successful read, the checkpoint advances to the timestamp of the newest message returned, so subsequent calls only surface genuinely new traffic. Pass `{ markAsRead: false }` (alias: `mark_as_read`, or the original `advanceCheckpoint`) to peek without consuming — the messages stay unread and will be returned again on the next call.
 
 `pending_invites` is an array of `{ roomId, name, topic, inviter }` objects — one entry per pending invite. It is always present (empty array when no invites are pending) and is returned atomically alongside the rooms map so you never need a separate `listInvites` call in a normal polling loop.
 
