@@ -25,8 +25,13 @@ Commands:
   accept-invite <roomId>          Accept a pending room or space invite
   reject-invite <roomId>          Decline a pending invite
   join-room <roomId>              Join a Matrix room (or space)
-  create-room [--name N] [--topic T] [--public] [--unencrypted] [--invite addr,...]
-                                  Create a new Matrix room (E2E by default)
+  create-room [--name N] [--topic T] [--public] [--unencrypted] [--direct] [--preset P] [--invite addr,...]
+                                  Create a new Matrix room (E2E by default).
+                                  --direct flags it as a 1:1 DM invite; --preset overrides the default
+                                  (private_chat for private, public_chat for public; use trusted_private_chat for DMs).
+  open-dm <peerUserId> [--unencrypted]
+                                  Open or reuse a 1:1 DM with the peer; updates m.direct on creation.
+  directs                         Print the m.direct account-data map (peer userId -> [room IDs]).
   create-space [--name N] [--topic T] [--public] [--invite addr,...] [--child roomId,...]
                                   Create a new Matrix Space (never E2E-encrypted)
   invite-user <roomId> <userId>   Invite a user to a room or space
@@ -261,9 +266,29 @@ async function main() {
       if (topic) opts.topic = topic;
       if (args.includes('--public')) opts.visibility = 'public';
       if (args.includes('--unencrypted')) opts.encrypted = false;
+      if (args.includes('--direct')) opts.is_direct = true;
+      const preset = parseFlag(args, '--preset');
+      if (preset) opts.preset = preset;
       const inviteList = parseFlag(args, '--invite');
       if (inviteList) opts.invite = inviteList.split(',').map(s => s.trim()).filter(Boolean);
       const result = await client.createRoom(opts);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'open-dm': {
+      if (!args[1]) { console.error('Usage: subnet open-dm <peerUserId>'); process.exit(1); }
+      await client.loginMatrix();
+      const opts = {};
+      if (args.includes('--unencrypted')) opts.encrypted = false;
+      const result = await client.openDmWith(args[1], opts);
+      console.log(JSON.stringify(result, null, 2));
+      break;
+    }
+
+    case 'directs': {
+      await client.loginMatrix();
+      const result = await client.getDirects();
       console.log(JSON.stringify(result, null, 2));
       break;
     }
