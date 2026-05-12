@@ -9,6 +9,14 @@ const {
   MAX_HISTORY_CHARS
 } = require('./lib/accountability');
 
+const {
+  formatDelegationMessage,
+  createDelegationEnvelope,
+  verifyDelegationEnvelope,
+  isDelegationActive,
+  DELEGATION_DEFAULT_WINDOW_SECONDS,
+} = require('./lib/delegation');
+
 const { E2EMatrixClient } = require('#matrix-impl');
 const { SubnetClient, deriveSignMessage } = require('./lib/subnet');
 
@@ -23,5 +31,10 @@ module.exports = {
   MAX_HISTORY_CHARS,
   E2EMatrixClient,
   SubnetClient,
-  deriveSignMessage
+  deriveSignMessage,
+  formatDelegationMessage,
+  createDelegationEnvelope,
+  verifyDelegationEnvelope,
+  isDelegationActive,
+  DELEGATION_DEFAULT_WINDOW_SECONDS,
 };

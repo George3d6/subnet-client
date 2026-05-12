@@ -20,6 +20,11 @@
       "browser": "./lib/node_only_stub.js",
       "node": "./lib/node_only.js",
       "default": "./lib/node_only.js"
+    },
+    "#delegation-storage": {
+      "browser": "./lib/delegation_storage_browser.js",
+      "node": "./lib/delegation_storage_node.js",
+      "default": "./lib/delegation_storage_node.js"
     }
   },
   "bin": {
