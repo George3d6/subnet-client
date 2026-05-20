@@ -10,11 +10,8 @@ const {
 } = require('./lib/accountability');
 
 const {
-  formatDelegationMessage,
-  createDelegationEnvelope,
   verifyDelegationEnvelope,
   isDelegationActive,
-  DELEGATION_DEFAULT_WINDOW_SECONDS,
 } = require('./lib/delegation');
 
 const { E2EMatrixClient } = require('#matrix-impl');
@@ -32,9 +29,6 @@ module.exports = {
   E2EMatrixClient,
   SubnetClient,
   deriveSignMessage,
-  formatDelegationMessage,
-  createDelegationEnvelope,
   verifyDelegationEnvelope,
   isDelegationActive,
-  DELEGATION_DEFAULT_WINDOW_SECONDS,
 };
