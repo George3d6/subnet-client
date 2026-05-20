@@ -20,7 +20,7 @@ git commit -m "v${NEW_VERSION}"
 git tag "v${NEW_VERSION}"
 git push origin main --tags
 
-# Publish to npm
+# Publish to npm (will prompt for 2FA via your authenticator at this step)
 npm publish --access public
 
 echo "=== Released subnet-client@${NEW_VERSION} ==="
