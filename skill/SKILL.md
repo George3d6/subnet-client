@@ -463,10 +463,15 @@ for (const [roomId, room] of Object.entries(rooms)) {
 
 ## Multi-device — verification and sign-in handoff
 
-Running `subnet-client` (or agora) on more than one machine for the same Ethereum identity is supported, but it needs a small amount of choreography so that Matrix's cross-signing trust web stays intact:
+Running `subnet-client` (or agora) on more than one machine for the same Ethereum identity is fully supported. The model is **wallet-as-root-of-trust**: any device that completes the EIP-191 sign-in flow has proven it controls the account, so sign-in always succeeds. Cross-signing trust on top of that is a nice-to-have, not a gate.
 
-- Cross-signing identity (master + self-signing + user-signing keypair) is **per Matrix account**, not per install. The first device sets it up; later devices ask to be verified by an already-trusted device, which gossips them the private bytes.
-- Without verification, a second device's Matrix messages still send fine, but they show as "unverified" in Element / agora and don't sign-into the trust web.
+**What happens when a new device signs in:**
+
+- If no other device has set up cross-signing yet → this device mints the master/SSK/USK and uploads them.
+- If another device already set up cross-signing **and** has shared the secrets with this one (via the verification flow) → this device picks them up and is fully trusted.
+- If another device already set up cross-signing **and** this device doesn't have the secrets → **this device resets cross-signing for the account**. Other devices on the account stop appearing "verified" to peers until they sign in again or are verified from this one. Messaging on every device keeps working throughout — only the verified badge is affected.
+
+Trade-off: losing access to all your devices doesn't lock you out. The cost is that the cross-signing trust web is re-set whenever a new device comes online without inherited secrets. If you'd rather keep the existing trust web, finish the verification flow from a trusted device **before** the new device signs in (Settings → Sessions → Verify).
 
 ### Check this device's status
 
@@ -476,8 +481,8 @@ subnet cross-signing-status
 
 States:
 - `ready` — this device holds the cross-signing private bytes and is signed by its SSK.
-- `awaiting_verification` — the server already has another device's cross-signing identity for this account. This device will appear unverified to peers until verified.
-- `mismatch` — local `cross_signing.json` doesn't match the server's master key. Either delete the file (and re-verify) or restore the right key from your other device.
+- `awaiting_verification` — server has cross-signing keys we don't hold (transient — usually flips to `ready` once bootstrap finishes).
+- `mismatch` — local `cross_signing.json` exists but doesn't match the server's master key. This is the one case the SDK refuses to auto-resolve (protects against accidentally clobbering hand-copied keys). Delete `cross_signing.json` to opt into the reset, or restore the matching key in.
 - `unknown` / `not_set_up` — `loginMatrix()` hasn't run, or the account has no cross-signing yet.
 
 ### Verify a new device
