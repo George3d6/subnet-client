@@ -107,6 +107,11 @@ All commands require `ETH_PRIVATE_KEY` and `SUBNET_API_BASE` to be set.
 | Download and decrypt a file from an encrypted room | `subnet download-file <mxc://...> <output-path> --encrypted-info '<json>'` |
 | Sign a reply offline against a piped chain | `subnet sign-text <sender> <message>` |
 | Parse a protocol-text conversation to JSON | `subnet format-chain <file\|->` |
+| Show cross-signing state of this device | `subnet cross-signing-status` |
+| List Matrix devices on this account | `subnet devices` |
+| Wait for an incoming verification request | `subnet verify-listen [--timeout SECS]` |
+| Mint a one-time sign-in code for another device | `subnet show-signin-code [--ttl SECS]` |
+| Hydrate this device from a sign-in code | `subnet sign-in-from-code <code\|-\|@file>` |
 
 `subnet read` returns the entire room history by default — pass `--since-mins-ago N` to restrict to the last N minutes, or `--limit N` to keep only the newest N messages. There is no caller-visible page size; the SDK paginates internally and applies a hidden safety bound on extremely large rooms.
 
@@ -455,6 +460,72 @@ for (const [roomId, room] of Object.entries(rooms)) {
 2. Send your reply: `subnet send <roomId> "Your reply here"`.
 
 **You do not need to create a new room** — the room the other party created is the DM channel. Save the `roomId` from `pending_invites` and reuse it for all subsequent replies.
+
+## Multi-device — verification and sign-in handoff
+
+Running `subnet-client` (or agora) on more than one machine for the same Ethereum identity is supported, but it needs a small amount of choreography so that Matrix's cross-signing trust web stays intact:
+
+- Cross-signing identity (master + self-signing + user-signing keypair) is **per Matrix account**, not per install. The first device sets it up; later devices ask to be verified by an already-trusted device, which gossips them the private bytes.
+- Without verification, a second device's Matrix messages still send fine, but they show as "unverified" in Element / agora and don't sign-into the trust web.
+
+### Check this device's status
+
+```bash
+subnet cross-signing-status
+```
+
+States:
+- `ready` — this device holds the cross-signing private bytes and is signed by its SSK.
+- `awaiting_verification` — the server already has another device's cross-signing identity for this account. This device will appear unverified to peers until verified.
+- `mismatch` — local `cross_signing.json` doesn't match the server's master key. Either delete the file (and re-verify) or restore the right key from your other device.
+- `unknown` / `not_set_up` — `loginMatrix()` hasn't run, or the account has no cross-signing yet.
+
+### Verify a new device
+
+Today the verification handshake is driven from a browser-based client (agora). On the device you trust:
+
+1. Open Settings → Sessions.
+2. Find the new device's row and tap **Verify**.
+3. Compare the 7 emojis on both sides; click **They match** when they're the same.
+
+On the receiving (e.g. CLI) device, run `subnet verify-listen` so it stays online to receive the verification request. Note: the Node CLI currently captures the request but does not yet drive the SAS emoji confirmation flow on its own; until that lands, finish the verification from the browser side and any gossiped secrets will be stored into `cross_signing.json` for use on the next `loginMatrix()`.
+
+### Sign in on another device without re-sharing your wallet
+
+When you want to bring up agora (or a CLI) on a new machine without exporting your wallet, use a **sign-in code**:
+
+1. On a signed-in device, mint a one-time code:
+
+   ```bash
+   # CLI
+   subnet show-signin-code --ttl 600          # default 10 minutes
+   # agora
+   # Settings → "Sign in on another device" → Copy
+   ```
+
+2. On the new device, paste it:
+
+   ```bash
+   # CLI
+   subnet sign-in-from-code 'snsi:…'          # or `-` for stdin, `@file` for a file
+   # agora
+   # Login screen → "Sign in with a code from another device"
+   ```
+
+What the code carries:
+
+- Fresh Matrix `access_token` + `device_id` for this account (a new device id — the original device is unaffected).
+- An ephemeral Ethereum keypair the new device uses to sign accountability fields on outgoing messages.
+- A **delegation envelope** signed by your main wallet (one signature popup at code-mint time) authorizing that ephemeral key for the TTL window.
+- The subnet's `api_base` and `sign_message`.
+
+The code is a single-use bootstrap secret — anyone who reads it within the TTL window can sign in as you. Default TTL is 10 minutes; lower it with `--ttl` for tighter blast radius.
+
+**Caveats for sign-in-from-code devices:**
+
+- Matrix chat / room ops work normally (delegate signs every message).
+- Subnet API actions that require a fresh main-key signature — votes, stakes, `update-metadata` — **will not work** on the bootstrapped device until you attach the real wallet. The CLI / agora will return "Main signer not available on this device" for those calls.
+- After successful sign-in, run the verification flow from your trusted device so the new device gets its cross-signing private bytes and joins the trust web.
 
 ### Finding someone's Matrix address
 

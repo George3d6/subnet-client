@@ -56,6 +56,24 @@ Commands:
                                   Download (and decrypt if needed) a file shared in chat.
                                   For encrypted rooms, pass the encrypt_info JSON from
                                   the attachment field printed by the read command.
+  cross-signing-status            Print the cross-signing state of this device
+                                  (ready / awaiting_verification / mismatch / unknown).
+  devices                         List Matrix devices on this account (you'll see
+                                  one entry per active subnet-client / agora install).
+  verify-listen [--timeout SECS]  Long-poll for incoming verification requests from
+                                  another of your devices. Use this on the device
+                                  being verified; initiate from a browser-based
+                                  client (e.g. agora "Verify session"). Default
+                                  timeout 120s.
+  show-signin-code [--ttl SECS]   Mint a one-time sign-in code for another device
+                                  (default TTL 600s = 10min). Print to stdout — the
+                                  other device uses sign-in-from-code to consume it.
+  sign-in-from-code <code|-|@file>
+                                  Hydrate this device from a sign-in code obtained
+                                  with show-signin-code (or agora's "Sign in on
+                                  another device"). Uses '-' to read code from stdin.
+                                  Does NOT require ETH_PRIVATE_KEY — credentials
+                                  come from the code.
   votes-pending                   List gated actions awaiting your vote
   votes-show <uuid>               Inspect a gated action (title, script, quorum, tally)
   votes-cast <uuid> <yes|no|cancel> [reason]  Sign and submit a vote (cancel requires a reason)
@@ -122,6 +140,31 @@ async function main() {
     process.exit(0);
   }
 
+  const cmd = args[0];
+
+  // sign-in-from-code is the one command that does NOT require ETH_PRIVATE_KEY
+  // — the whole point is to bootstrap a device that doesn't have it. The code
+  // carries Matrix creds + a delegation envelope; the device runs as the
+  // delegated signer until the user explicitly attaches a wallet.
+  if (cmd === 'sign-in-from-code') {
+    const arg = args[1];
+    if (!arg) { console.error('Usage: subnet sign-in-from-code <code|-|@file>'); process.exit(1); }
+    let code;
+    if (arg === '-') code = fs.readFileSync('/dev/stdin', 'utf8').trim();
+    else if (arg.startsWith('@')) code = fs.readFileSync(arg.slice(1), 'utf8').trim();
+    else code = arg.trim();
+    const client = await SubnetClient.fromQrPayload(code);
+    await client.loginMatrix();
+    console.log(JSON.stringify({
+      ok: true,
+      address: client.address,
+      matrix_user_id: client.matrix?.userId,
+      matrix_device_id: client.matrix?.deviceId,
+    }, null, 2));
+    await client.close();
+    return;
+  }
+
   const pk = process.env.ETH_PRIVATE_KEY;
   if (!pk) {
     console.error('Error: ETH_PRIVATE_KEY environment variable is required');
@@ -136,7 +179,6 @@ async function main() {
 
   const signMsgEnv = process.env.SUBNET_SIGN_MESSAGE;
   const client = new SubnetClient({ privateKey: pk, apiBase, signMessage: signMsgEnv });
-  const cmd = args[0];
 
   try {
   switch (cmd) {
@@ -464,6 +506,58 @@ async function main() {
       }
       fs.writeFileSync(args[2], buffer);
       console.log(`Downloaded ${buffer.length} bytes to ${args[2]}`);
+      break;
+    }
+
+    case 'cross-signing-status': {
+      await client.loginMatrix();
+      const status = await client.getCrossSigningStatus();
+      console.log(JSON.stringify(status, null, 2));
+      break;
+    }
+
+    case 'devices': {
+      await client.loginMatrix();
+      const devices = await client.listOwnDevices();
+      console.log(JSON.stringify(devices, null, 2));
+      break;
+    }
+
+    case 'show-signin-code': {
+      await client.loginMatrix();
+      const ttlSecs = parseInt(parseFlag(args, '--ttl') || '600', 10);
+      const code = await client.generateQrSigninPayload({ ttlSeconds: ttlSecs });
+      console.log(code);
+      break;
+    }
+
+    case 'verify-listen': {
+      await client.loginMatrix();
+      const timeoutSecsRaw = parseFlag(args, '--timeout');
+      const timeoutMs = (timeoutSecsRaw ? parseInt(timeoutSecsRaw, 10) : 120) * 1000;
+      console.log(`[verify-listen] Listening for verification requests for up to ${Math.round(timeoutMs / 1000)}s…`);
+      console.log('[verify-listen] On the other device (e.g. agora), open Settings → Sessions, find this device, and tap "Verify".');
+      let resolved = false;
+      const unsubscribe = client.onIncomingVerification((req) => {
+        console.log(JSON.stringify({ event: 'incoming_verification_request', ...req }, null, 2));
+        console.log('');
+        console.log('NOTE: The Node CLI does not yet drive the SAS emoji confirmation flow on its own.');
+        console.log('      The verification has been NOTED but not auto-accepted. To finish verifying this');
+        console.log('      device, run the verification dance from agora — it will handshake to this CLI');
+        console.log('      via to-device events, and any gossiped cross-signing secrets will be stored');
+        console.log(`      into ${require('path').join(client.matrix.storePath, 'cross_signing.json')} for use on next login.`);
+        resolved = true;
+      });
+      const deadline = Date.now() + timeoutMs;
+      // _syncOnce drains to-device events through the OlmMachine and feeds
+      // them into the dispatcher — sync() alone wouldn't fire onIncomingVerification.
+      while (Date.now() < deadline && !resolved) {
+        await client.matrix._syncOnce().catch((e) => console.warn('[verify-listen] sync error:', e.message));
+        if (resolved) break;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      unsubscribe();
+      if (!resolved) console.log('[verify-listen] No verification request received within the timeout.');
       break;
     }
 
