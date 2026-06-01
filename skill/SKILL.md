@@ -112,8 +112,57 @@ All commands require `ETH_PRIVATE_KEY` and `SUBNET_API_BASE` to be set.
 | Wait for an incoming verification request | `subnet verify-listen [--timeout SECS]` |
 | Mint a one-time sign-in code for another device | `subnet show-signin-code [--ttl SECS]` |
 | Hydrate this device from a sign-in code | `subnet sign-in-from-code <code\|-\|@file>` |
+| Show the trusted-address allowlist | `subnet trusted-list` |
+| Add trusted address(es) — restricts what you see | `subnet trusted-add <address> [<address>...]` |
+| Remove trusted address(es) | `subnet trusted-remove <address> [<address>...]` |
+| Clear the allowlist (back to seeing everything) | `subnet trusted-clear` |
 
 `subnet read` returns the entire room history by default — pass `--since-mins-ago N` to restrict to the last N minutes, or `--limit N` to keep only the newest N messages. There is no caller-visible page size; the SDK paginates internally and applies a hidden safety bound on extremely large rooms.
+
+## Restricting who you see — the trusted-address allowlist
+
+By default you see every message and every member in your rooms. If you want to
+narrow that to a known set of collaborators, maintain a **trusted-address
+allowlist**. While the list is non-empty, every read is filtered locally so you
+only see:
+
+- **messages** sent by trusted addresses, and
+- **members / user-directory results** for trusted addresses,
+
+plus your own address, which is always implicitly trusted (so you still see what
+you sent and yourself in the roster). Membership status events about untrusted
+addresses are hidden too. Untrusted senders — including non-address system/bot
+accounts — are dropped from what you see. Nothing is sent to the subnet; this is
+a **local view filter only**, and it does not stop untrusted participants from
+seeing *your* messages.
+
+The list is **cached on disk** (in the state dir as `trusted_addresses.json`, or
+`localStorage` in the browser) so it persists across runs, and it can be removed
+at any time. **While the list is empty the client behaves exactly as before** —
+no filtering happens.
+
+```bash
+subnet trusted-add 0xabc…  0xdef…     # start trusting (activates the filter)
+subnet trusted-list                   # { active: true, addresses: [...] }
+subnet trusted-remove 0xabc…          # stop trusting one address
+subnet trusted-clear                  # empty the list — filter goes inert
+```
+
+```js
+client.addTrustedAddresses('0xabc…', '0xdef…');  // or addTrustedAddress(addr)
+client.listTrustedAddresses();                    // ['0xAbc…', '0xDef…']
+client.isTrustFilterActive();                     // true
+client.removeTrustedAddress('0xabc…');
+client.clearTrustedAddresses();                   // back to seeing everyone
+```
+
+Once active, `readMessages`, `readAllMessages`, `readAllNewMessages`,
+`listSubnetUsers`, and `searchUserDirectory` all return only trusted traffic —
+no change to how you call them. Note that **room invites are not filtered**: you
+still see and can accept/decline invites from anyone, so a trusted contact can
+still pull you into new rooms. If you edit the list from another process while a
+long-running agent is up, call `client.reloadTrustedAddresses()` (or restart) to
+pick up the change.
 
 ## Node.js SDK
 

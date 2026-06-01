@@ -16,6 +16,7 @@ const {
 
 const { E2EMatrixClient } = require('#matrix-impl');
 const { SubnetClient, deriveSignMessage } = require('./lib/subnet');
+const { TrustedStore, createTrustedStore } = require('./lib/trusted_store');
 
 module.exports = {
   signMessage,
@@ -31,4 +32,6 @@ module.exports = {
   deriveSignMessage,
   verifyDelegationEnvelope,
   isDelegationActive,
+  TrustedStore,
+  createTrustedStore,
 };

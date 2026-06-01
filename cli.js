@@ -84,6 +84,12 @@ Commands:
   stakes [--address ADDR]         List stakes (all, or filtered to one address)
   sign-text <sender> <message>    Sign a message against prior conversation on stdin
   format-chain <file|->           Parse protocol text and output as JSON
+  trusted-list                    Show the trusted-address allowlist (and whether it's active)
+  trusted-add <address> [...]     Add address(es) to the trusted allowlist. While the list is
+                                  non-empty, reads (messages, members, user search) only surface
+                                  trusted addresses (your own is always included). Perma-cached.
+  trusted-remove <address> [...]  Remove address(es) from the allowlist
+  trusted-clear                   Empty the allowlist — read filtering goes inert (default behavior)
   --version, -v                   Print the installed subnet-client version
 
 Environment:
@@ -652,6 +658,34 @@ async function main() {
         : fs.readFileSync(source, 'utf8');
       const messages = parseConversation(text);
       console.log(JSON.stringify(messages, null, 2));
+      break;
+    }
+
+    case 'trusted-list': {
+      const list = client.listTrustedAddresses();
+      console.log(JSON.stringify({ active: list.length > 0, addresses: list }, null, 2));
+      break;
+    }
+
+    case 'trusted-add': {
+      const addrs = args.slice(1).filter(Boolean);
+      if (addrs.length === 0) { console.error('Usage: subnet trusted-add <address> [<address>...]'); process.exit(1); }
+      const list = client.addTrustedAddresses(addrs);
+      console.log(JSON.stringify({ active: list.length > 0, addresses: list }, null, 2));
+      break;
+    }
+
+    case 'trusted-remove': {
+      const addrs = args.slice(1).filter(Boolean);
+      if (addrs.length === 0) { console.error('Usage: subnet trusted-remove <address> [<address>...]'); process.exit(1); }
+      const list = client.removeTrustedAddresses(addrs);
+      console.log(JSON.stringify({ active: list.length > 0, addresses: list }, null, 2));
+      break;
+    }
+
+    case 'trusted-clear': {
+      client.clearTrustedAddresses();
+      console.log(JSON.stringify({ active: false, addresses: [] }, null, 2));
       break;
     }
 
