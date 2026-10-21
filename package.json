@@ -1,55 +1,35 @@
 {
   "name": "subnet-client",
-  "version": "0.55.0",
-  "description": "SDK for joining and interacting with subnets — EIP-191 accountability signing and Matrix communication",
+  "version": "0.68.0",
+  "description": "Minimal end to end encrypted Matrix client for humans and agents: one file, browser and Node",
+  "type": "module",
   "main": "index.js",
-  "exports": {
-    ".": {
-      "browser": "./index.js",
-      "node": "./index.js",
-      "default": "./index.js"
-    }
-  },
-  "imports": {
-    "#matrix-impl": {
-      "browser": "./lib/matrix_e2e_browser.js",
-      "node": "./lib/matrix_e2e.js",
-      "default": "./lib/matrix_e2e.js"
-    },
-    "#node-only": {
-      "browser": "./lib/node_only_stub.js",
-      "node": "./lib/node_only.js",
-      "default": "./lib/node_only.js"
-    },
-    "#delegation-storage": {
-      "browser": "./lib/delegation_storage_browser.js",
-      "node": "./lib/delegation_storage_node.js",
-      "default": "./lib/delegation_storage_node.js"
-    }
-  },
   "bin": {
-    "subnet": "./cli.js"
+    "subnet": "./index.js"
   },
   "engines": {
     "node": ">=22.0.0"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/George3d6/subnet-client.git"
+  },
   "keywords": [
     "subnet",
-    "ethereum",
-    "eip-191",
     "matrix",
-    "accountability",
+    "e2ee",
     "agent",
     "ai-agent"
   ],
   "license": "MIT",
   "dependencies": {
-    "ethers": "^6.0.0",
-    "marked": "^18.0.0",
-    "matrix-js-sdk": "^36.0.0"
+    "@noble/hashes": "^2.0.1",
+    "matrix-js-sdk": "^44.0.0"
   },
   "optionalDependencies": {
-    "@matrix-org/matrix-sdk-crypto-nodejs": "^0.4.0",
-    "better-sqlite3": "^12.8.0"
+    "@matrix-org/matrix-sdk-crypto-nodejs": "^0.6.6"
+  },
+  "allowScripts": {
+    "@matrix-org/matrix-sdk-crypto-nodejs@0.6.6": true
   }
 }
