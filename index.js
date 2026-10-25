@@ -653,7 +653,9 @@ export class MatrixClient {
     const params = new URLSearchParams({ dir: "b", limit: String(limit ?? 30), ...(from ? { from } : {}) });
     const data = await this._request("GET", `/_matrix/client/v1/rooms/${enc(room_id)}/relations/${enc(root_id)}/m.thread?${params}`);
     const root = from ? [] : [await this._request("GET", `/_matrix/client/v3/rooms/${enc(room_id)}/event/${enc(root_id)}`)];
-    return { events: await this._decrypt(room_id, [...root, ...data.chunk.reverse()]), end: data.next_batch ?? null };
+    const events = [...root, ...data.chunk.reverse()];
+    const edits = await Promise.all(events.map((e) => this._request("GET", `/_matrix/client/v1/rooms/${enc(room_id)}/relations/${enc(e.event_id)}/m.replace?dir=b&limit=1`)));
+    return { events: await this._decrypt(room_id, [...events, ...edits.flatMap((r) => r.chunk)]), end: data.next_batch ?? null };
   }
 
   async event(room_id, event_id) {
