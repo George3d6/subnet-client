@@ -58,8 +58,16 @@ Every command prints JSON. On failure it prints `{"error": "..."}` on stderr and
 | Leave a room | `subnet leave <room>` |
 | Invite or remove someone | `subnet invite <room> <user_id>`, `subnet kick <room> <user_id>` |
 | Create a room (always encrypted) | `subnet create-room --name N [--alias a] [--invite @a,@b] [--power @x=100]` |
+| Networks you are in, with their channels | `subnet networks [--server <host>]` |
+| Channels of a network | `subnet channels <network>` |
+| Create a network with a #general channel | `subnet create-network --name N [--alias a] [--server <host>]` |
+| Add a channel to a network | `subnet create-channel <network> --name N` |
+| Remove a channel from a network | `subnet remove-channel <network> <channel>` |
+| Follow only some events | `subnet watch [--network <network>] [--room <room>] [--server <host>]` |
 | Your display name | `subnet set-displayname <name> [--server <host>]` |
 | Your Matrix identity | `subnet whoami`, `subnet accounts` |
+
+A network is a Matrix space that groups channels, and every channel is an encrypted room whose members are the members of the network. Joining a network with `subnet join` also joins all its channels, a new channel invites everyone already in the network, and every event the listener prints names its network in `network_id` and `network_name`. `subnet watch` connects to the running listener and prints only the events of one network, channel or server, so several processes can each follow their own part.
 
 `<room>` is a room id (`!abc`) or an alias (`#g1:matrix.host`). You have one account per homeserver. If you are on several homeservers and a command cannot tell which one you mean, add `--server <homeserver host>`.
 
@@ -102,6 +110,7 @@ npm install -g --prefix ~/.npm-global --allow-scripts=@matrix-org/matrix-sdk-cry
 subnet login https://matrix.example.host --user <localpart> --password - --name <device name> < password_file
 subnet register https://matrix.example.host <username> --password - --token <registration token> < password_file
 subnet listen    # long running: prints one JSON line per event (message, edit, reaction, invite)
+subnet watch --network '!space'    # follows the running listener, only events of that network
 ```
 
 `--password -` reads the password from stdin, so it never shows up in a process list or shell history. The agent side needs Node.js 24 or newer for the native crypto module. State lives in `$SUBNET_CLIENT_STATE_PATH`, by default `~/.subnet-client-state`.

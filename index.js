@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 import { keccak_256 } from "@noble/hashes/sha3.js";
 
-const VERSION = "0.68.0";
+const VERSION = "0.69.0";
 const IS_NODE = typeof window === "undefined";
 const NODE_CRYPTO = "@matrix-org/matrix-sdk-crypto-nodejs";
 const MEGOLM = "m.megolm.v1.aes-sha2";
+const SPACE = "m.space";
+const GENERAL_CHANNEL = "general";
 const FILE_MSGTYPES = ["m.file", "m.image", "m.video", "m.audio"];
 const BACKOFF_MS = [2000, 5000, 15000];
 const NOTHING = { not_types: ["*"] };
@@ -19,6 +21,8 @@ const USAGE = `subnet <command>
   accounts | logout [--server] | whoami [--server]
   rooms | invites | join <room or #alias> [--server] | leave <room>
   create-room --name N [--alias a] [--invite @a,@b] [--power @x=100,@y=50] [--server]
+  create-network --name N [--alias a] [--server] | networks [--server]
+  channels <network> | create-channel <network> --name N | remove-channel <network> <channel>
   invite <room> <user_id> | kick <room> <user_id> | members <room>
   read <room> [--limit 30] [--thread <root>]
   send <room> <text or -> [--reply-to <id>] [--thread <root>]
@@ -26,7 +30,7 @@ const USAGE = `subnet <command>
   receipt <room> <event_id> | typing <room> on|off
   send-file <room> <path> [--thread <root>] | download <room> <event_id> <out_path>
   set-displayname <name> [--server]
-  listen | --version`;
+  listen | watch [--network <network>] [--room <room>] [--server] | --version`;
 
 const node_module = (name) => process.getBuiltinModule(name);
 const node_require = (name) => node_module("node:module").createRequire(import.meta.url)(name);
@@ -45,6 +49,10 @@ export function backup_key_from_signature(signature) {
 
 export function localpart(user_id) {
   return user_id.slice(1, user_id.indexOf(":"));
+}
+
+function server_name(user_id) {
+  return user_id.slice(user_id.indexOf(":") + 1);
 }
 
 export function project(raw_events, my_user_id, names) {
@@ -574,6 +582,51 @@ export class MatrixClient {
     await this._request("PUT", `/_matrix/client/v3/rooms/${enc(room_id)}/state/m.room.name/`, { name });
   }
 
+  async _all_state(room_id) {
+    return this._request("GET", `/_matrix/client/v3/rooms/${enc(room_id)}/state`);
+  }
+
+  async create_network({ name, alias }) {
+    const room_id = (await this._request("POST", "/_matrix/client/v3/createRoom", { name, room_alias_name: alias, preset: "public_chat", visibility: "private", creation_content: { type: SPACE }, power_level_content_override: { events: { "m.space.child": 0, "m.room.name": 50, "m.room.power_levels": 100 } } })).room_id;
+    return { room_id, general: await this.create_channel(room_id, GENERAL_CHANNEL) };
+  }
+
+  async create_channel(network_id, name) {
+    const via = [server_name(this.user_id)];
+    const initial_state = [
+      { type: "m.room.encryption", state_key: "", content: { algorithm: MEGOLM } },
+      { type: "m.room.join_rules", state_key: "", content: { join_rule: "restricted", allow: [{ type: "m.room_membership", room_id: network_id }] } },
+      { type: "m.space.parent", state_key: network_id, content: { via, canonical: true } },
+    ];
+    const room_id = (await this._request("POST", "/_matrix/client/v3/createRoom", { name, preset: "private_chat", visibility: "private", initial_state, power_level_content_override: { events: { "m.room.name": 0, "m.room.power_levels": 100 } } })).room_id;
+    await this._request("PUT", `/_matrix/client/v3/rooms/${enc(network_id)}/state/m.space.child/${enc(room_id)}`, { via });
+    for (const m of await this.members(network_id)) if (m.membership === "join" && m.user_id !== this.user_id) await this.invite(room_id, m.user_id);
+    return room_id;
+  }
+
+  async remove_channel(network_id, room_id) {
+    await this._request("PUT", `/_matrix/client/v3/rooms/${enc(network_id)}/state/m.space.child/${enc(room_id)}`, {});
+  }
+
+  async channels(network_id) {
+    return (await this._all_state(network_id)).filter((e) => e.type === "m.space.child" && e.content.via?.length).map((e) => e.state_key);
+  }
+
+  async network_of(room_id) {
+    return (await this._all_state(room_id)).find((e) => e.type === "m.space.parent")?.state_key ?? null;
+  }
+
+  async is_network(room_id) {
+    return (await this._state(room_id, "m.room.create"))?.type === SPACE;
+  }
+
+  async join_network(room_id_or_alias) {
+    const room_id = await this.join(room_id_or_alias);
+    const channels = await this.channels(room_id);
+    for (const channel of channels) await this.join(channel);
+    return { room_id, channels };
+  }
+
   async resolve(room_id_or_alias) {
     if (!room_id_or_alias.startsWith("#")) return room_id_or_alias;
     return (await this._request("GET", `/_matrix/client/v3/directory/room/${enc(room_id_or_alias)}`)).room_id;
@@ -814,6 +867,8 @@ class Cli {
     this.listening = false;
     this.room_names = new Map();
     this.member_names = new Map();
+    this.room_networks = new Map();
+    this.watchers = new Set();
   }
 
   save() {
@@ -868,8 +923,26 @@ class Cli {
     let data = "";
     socket.on("data", async (chunk) => {
       data += chunk;
-      if (data.includes("\n")) socket.end(JSON.stringify(await this.execute(JSON.parse(data).argv)));
+      if (!data.includes("\n")) return;
+      const request = JSON.parse(data);
+      if (request.watch) return this.add_watcher(socket, request.watch);
+      socket.end(JSON.stringify(await this.execute(request.argv)));
     });
+  }
+
+  async add_watcher(socket, filter) {
+    const resolved = { ...filter };
+    for (const key of ["network", "room"]) if (filter[key]) resolved[key] = (await this.room_client(filter[key], filter.server)).room_id;
+    const watcher = { socket, filter: resolved };
+    this.watchers.add(watcher);
+    socket.on("close", () => this.watchers.delete(watcher));
+    socket.on("error", () => this.watchers.delete(watcher));
+  }
+
+  watched(filter, line) {
+    if (filter.server && line.server !== normalize_homeserver(filter.server)) return false;
+    if (filter.room && line.room_id !== filter.room) return false;
+    return !filter.network || line.network_id === filter.network || line.room_id === filter.network;
   }
 
   async execute(argv) {
@@ -968,6 +1041,12 @@ class Cli {
     return this.room_names.get(room_id);
   }
 
+  async network(client, room_id) {
+    if (!this.room_networks.has(room_id)) this.room_networks.set(room_id, await client.network_of(room_id));
+    const network_id = this.room_networks.get(room_id);
+    return { network_id, network_name: network_id ? await this.room_name(client, network_id, []) : null };
+  }
+
   async login(homeserver_arg, username, password, device_name) {
     const homeserver = normalize_homeserver(homeserver_arg);
     if (this.clients.has(homeserver)) await (await this.clients.get(homeserver)).close();
@@ -1000,6 +1079,25 @@ class Cli {
       if (!client) continue;
       await this.refresh_rooms(account);
       for (const room_id of account.rooms) out.push({ server: account.homeserver, room_id, name: await client.room_name(room_id), members: (await client.members(room_id)).filter((m) => m.membership === "join").length });
+    }
+    return out;
+  }
+
+  async channel_rows(client, network_id) {
+    const out = [];
+    for (const room_id of await client.channels(network_id)) out.push({ room_id, name: await client.room_name(room_id) });
+    return out;
+  }
+
+  async networks(server) {
+    const out = [];
+    for (const account of server ? [this.account(server)] : Object.values(this.accounts)) {
+      const client = await this.reachable(account);
+      if (!client) continue;
+      await this.refresh_rooms(account);
+      for (const room_id of account.rooms) {
+        if (await client.is_network(room_id)) out.push({ server: account.homeserver, room_id, name: await client.room_name(room_id), channels: await this.channel_rows(client, room_id) });
+      }
     }
     return out;
   }
@@ -1053,11 +1151,28 @@ class Cli {
       await this.refresh_rooms(account);
       return { room_id };
     }
+    if (name === "create-network") {
+      const account = this.account(flags.server);
+      const network = await (await this.client(account)).create_network({ name: flags.name, alias: flags.alias });
+      await this.refresh_rooms(account);
+      return { ...network, alias: flags.alias ? `#${flags.alias}:${server_name(account.user_id)}` : null };
+    }
+    if (name === "networks") return this.networks(flags.server);
     if (name === "join") {
       const account = await this.room_account(a, flags.server);
-      const room_id = await (await this.client(account)).join(a);
+      const client = await this.client(account);
+      const room_id = await client.join(a);
+      const channels = (await client.is_network(room_id)) ? (await client.join_network(room_id)).channels : [];
       await this.refresh_rooms(account);
-      return { room_id };
+      return { room_id, channels };
+    }
+    if (["channels", "create-channel", "remove-channel"].includes(name)) {
+      const { account, client, room_id } = await this.room_client(a, flags.server);
+      if (name === "channels") return this.channel_rows(client, room_id);
+      if (name === "remove-channel") return client.remove_channel(room_id, b).then(() => ({ network: room_id, removed: b }));
+      const channel = await client.create_channel(room_id, flags.name);
+      await this.refresh_rooms(account);
+      return { network: room_id, room_id: channel };
     }
     if (name === "set-displayname") {
       for (const account of flags.server ? [this.account(flags.server)] : Object.values(this.accounts)) await (await this.client(account)).set_displayname(a);
@@ -1084,6 +1199,17 @@ class Cli {
     return client.typing(room_id, b === "on").then(() => ({ room_id, typing: b === "on" }));
   }
 
+  watch(filter) {
+    const socket = this.net.createConnection(this.sock_path);
+    socket.on("connect", () => socket.write(`${JSON.stringify({ watch: filter })}\n`));
+    socket.on("data", (chunk) => process.stdout.write(chunk));
+    socket.on("close", () => process.exit(1));
+    socket.on("error", (e) => {
+      process.stderr.write(`${JSON.stringify({ error: `subnet listen is not running: ${e.message}` })}\n`);
+      process.exit(1);
+    });
+  }
+
   async listen() {
     await this.acquire(null);
     this.listening = true;
@@ -1100,7 +1226,9 @@ class Cli {
   }
 
   emit(line) {
-    process.stdout.write(`${JSON.stringify(line)}\n`);
+    const text = `${JSON.stringify(line)}\n`;
+    process.stdout.write(text);
+    for (const { socket, filter } of this.watchers) if (this.watched(filter, line)) socket.write(text);
   }
 
   async on_batch(account, client, batch) {
@@ -1113,7 +1241,7 @@ class Cli {
     const others = events.filter((e) => e.sender && e.sender !== client.user_id);
     if (!others.some((e) => ["m.room.message", "m.room.encrypted", "m.reaction"].includes(e.type))) return;
     const names = await this.names(client, room_id, others.map((e) => e.sender));
-    const base = { server: account.homeserver, room_id, room_name: await this.room_name(client, room_id, events) };
+    const base = { server: account.homeserver, room_id, room_name: await this.room_name(client, room_id, events), ...(await this.network(client, room_id)) };
     for (const message of project(others, client.user_id, names)) this.emit({ type: "message", ...base, message });
     for (const e of others) {
       const relation = e.content["m.relates_to"];
@@ -1142,6 +1270,7 @@ async function cli(argv) {
   process.chdir(root);
   const ctx = new Cli(fs, path, net, root);
   if (argv[0] === "listen") return ctx.listen();
+  if (argv[0] === "watch") return ctx.watch(parse_args(argv).flags);
   const result = (await ctx.acquire(full_argv)) ?? (await ctx.execute(full_argv));
   await ctx.close_all();
   process.stdout.write(result.stdout);

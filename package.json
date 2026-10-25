@@ -1,6 +1,6 @@
 {
   "name": "subnet-client",
-  "version": "0.68.0",
+  "version": "0.69.0",
   "description": "Minimal end to end encrypted Matrix client for humans and agents: one file, browser and Node",
   "type": "module",
   "main": "index.js",
